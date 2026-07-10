@@ -299,6 +299,10 @@ body.sim-land #frame{width:740px;height:420px}
     </div>
   </div>
 
+  <!-- File inputs for photo capture (outside overlay so they're always in DOM) -->
+  <input type="file" id="cam-input" accept="image/*" capture="environment" style="position:fixed;top:-999px;left:-999px;opacity:0;width:1px;height:1px">
+  <input type="file" id="photo-input" accept="image/*" multiple style="position:fixed;top:-999px;left:-999px;opacity:0;width:1px;height:1px">
+
   <!-- Add Vinyl: search / confirm / edit -->
   <div id="add-confirm-overlay" class="overlay hidden">
     <div class="panel" style="max-height:92%">
@@ -1614,7 +1618,5 @@ renderLib();
   });
 })();
 </script>
-<input type="file" id="cam-input" accept="image/*" capture="environment" style="position:fixed;top:-999px;left:-999px;opacity:0;width:1px;height:1px">
-<input type="file" id="photo-input" accept="image/*" multiple style="position:fixed;top:-999px;left:-999px;opacity:0;width:1px;height:1px">
 </body>
 </html>

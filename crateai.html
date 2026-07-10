@@ -285,7 +285,7 @@ body.sim-land #frame{width:740px;height:420px}
         </button>
       </div>
       <input type="file" id="cam-input" accept="image/*" capture="environment" style="display:none">
-      <input type="file" id="photo-input" accept="image/*" style="display:none">
+      <input type="file" id="photo-input" accept="image/*" multiple style="display:none">
     </div>
   </div>
 
@@ -298,6 +298,38 @@ body.sim-land #frame{width:740px;height:420px}
       </div>
       <div id="add-confirm-body" style="overflow-y:auto;flex:1;padding:12px"></div>
       <div class="panel-ft" id="add-confirm-ft"></div>
+    </div>
+  </div>
+
+  <!-- Duplicate detection confirmation -->
+  <div id="dup-overlay" class="overlay hidden" style="align-items:center;padding:20px">
+    <div class="panel" style="max-height:unset;border-radius:16px">
+      <div class="panel-hd">
+        <span class="panel-title">Already in Library</span>
+      </div>
+      <div style="padding:12px 13px">
+        <p style="font-size:13px;color:#ccc;margin-bottom:6px">This record already exists in your library.</p>
+        <p id="dup-info" style="font-size:11px;color:#888;font-style:italic"></p>
+      </div>
+      <div class="panel-ft">
+        <button class="btn-ghost" id="dup-cancel">Cancel</button>
+        <button class="btn" id="dup-add-anyway">Add anyway</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Batch Add flow -->
+  <div id="batch-overlay" class="overlay hidden">
+    <div class="panel" style="max-height:92%">
+      <div class="panel-hd">
+        <span class="panel-title">Batch Add Records</span>
+        <button class="icon-btn" id="batch-close">✕</button>
+      </div>
+      <div id="batch-body" style="overflow-y:auto;flex:1;padding:12px"></div>
+      <div class="panel-ft">
+        <button class="btn-ghost" id="batch-cancel">Cancel</button>
+        <button class="btn-confirm" id="batch-add-all">Add Selected</button>
+      </div>
     </div>
   </div>
 </div>
@@ -375,7 +407,7 @@ const LIB_DEF_COLS=[
 ];
 let libCols=LIB_DEF_COLS.map(c=>({...c}));
 const S={lib:[],now:null,tab:'lib',libQ:'',activeGenres:[],liveQ:'',liveResults:[],sortCol:'rank',sortDir:'asc',listening:false,detectedBPM:null,mediaStream:null,audioCtx:null};
-let cfg={keyFormat:'camelot',x2:false,keyAdaptation:false,discogsToken:'',spotifyId:'',spotifySecret:'',inclPlayed:true};
+let cfg={keyFormat:'camelot',x2:false,keyAdaptation:false,discogsToken:'',geminiKey:'',spotifyId:'',spotifySecret:'',inclPlayed:true};
 let ratings={};
 let playHistory={};
 let cols=DEF_COLS.map(c=>({...c}));
@@ -975,12 +1007,14 @@ function parseKeyStr(val){
   if(mus){const idx=KN.findIndex(n=>n.toLowerCase()===mus[1].toLowerCase());if(idx>=0)return{key:idx,mode:mus[2].toLowerCase()==='major'?1:0};}
   return{key:null,mode:null};
 }
-function doSaveTrack(){
+async function doSaveTrack(){
   const g=id=>document.getElementById(id);
   const base={...AV.track};
   base.artist=(g('av-artist')||{}).value||base.artist||'';
   base.album=(g('av-album')||{}).value||base.album||'';
   base.genre=(g('av-genre')||{}).value||base.genre||'';
+  const ok=await checkDuplicate(base.artist,base.album);
+  if(!ok)return;
   const tracklist=(AV._detail&&AV._detail.tracklist)||[];
   if(tracklist.length){
     // Collect edited track titles from inputs
@@ -1091,14 +1125,15 @@ async function analyzePhotoWithGemini(dataUrl){
           {text:'This is a photo of a vinyl record, its sleeve or label. Extract the artist name and album title. Return ONLY valid JSON: {"artist":"...","album":"..."}. Best guess if unclear. No markdown.'},
           {inline_data:{mime_type:mime,data:b64}}
         ]}],
-        generationConfig:{temperature:0.1,maxOutputTokens:500,thinkingConfig:{thinkingBudget:0}}
+        generationConfig:{temperature:0.1,maxOutputTokens:500}
       })
     });
+    if(!r.ok)throw new Error('Gemini API error: '+r.status+' '+r.statusText);
     const j=await r.json();
     const txt=(j.candidates&&j.candidates[0]&&j.candidates[0].content&&j.candidates[0].content.parts&&j.candidates[0].content.parts[0]&&j.candidates[0].content.parts[0].text)||'';
     const m=txt.match(/\{[\s\S]*?\}/);
     if(m)return JSON.parse(m[0]);
-  }catch(e){}
+  }catch(e){console.error('[Gemini]',e);}
   return null;
 }
 function handleFileCapture(file){
@@ -1120,16 +1155,19 @@ function handleFileCapture(file){
   });
 }
 document.getElementById('cam-input').addEventListener('change',e=>{handleFileCapture(e.target.files[0]);e.target.value='';});
-document.getElementById('photo-input').addEventListener('change',e=>{handleFileCapture(e.target.files[0]);e.target.value='';});
+document.getElementById('photo-input').addEventListener('change',e=>{
+  const files=e.target.files;
+  if(!files||!files.length){e.target.value='';return;}
+  if(files.length===1){handleFileCapture(files[0]);}
+  else{closeAddSrc();handleBatchFiles(Array.from(files));}
+  e.target.value='';
+});
 
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){
     document.getElementById('live-results').style.display='none';
-    document.getElementById('genre-overlay').classList.add('hidden');
-    document.getElementById('col-overlay').classList.add('hidden');
-    document.getElementById('add-src-overlay').classList.add('hidden');
-    document.getElementById('lib-col-overlay').classList.add('hidden');
-    document.getElementById('add-confirm-overlay').classList.add('hidden');
+    ['genre-overlay','col-overlay','lib-col-overlay','add-src-overlay','add-confirm-overlay','dup-overlay','batch-overlay'].forEach(id=>document.getElementById(id).classList.add('hidden'));
+    if(_dupResolve){_dupResolve(false);_dupResolve=null;}
     stopListening();
   }
 });
@@ -1144,15 +1182,19 @@ document.addEventListener('click',e=>{
   const pick=t.closest('[data-pick]');
   if(pick){const id=pick.dataset.pick;setNow(S.lib.find(x=>x.id===id)||null);S.liveResults=[];document.getElementById('live-results').style.display='none';document.getElementById('live-q').value='';stopListening();renderLive();return;}
   if(t.id==='clear-now'){S.now=null;renderLive();return;}
-  if(t.id==='au-edit-res'){renderAddEdit();return;}
+  if(t.id==='av-edit-res'){renderAddEdit();return;}
   if(t.id==='av-confirm-res'){
     const tracklist=(AV._detail&&AV._detail.tracklist)||[];
-    if(tracklist.length){
-      const base=AV.track;
-      tracklist.forEach(function(tr){S.lib.push({id:genId(),title:tr.title,artist:base.artist,album:base.album,genre:base.genre,bpm:null,key:null,mode:null,energy:null,position:tr.position||''});});
-    }else{const tr={...AV.track,id:AV.track.id||genId()};if(!tr.title&&AV._detail)tr.title=AV._detail.title||'Untitled';S.lib.push(tr);}
-    saveLib();closeAddConfirm();renderLib();return;}
-  if(t.id==='au-kw-btn'){renderAddKeywords();return;}
+    const _base=AV.track;
+    checkDuplicate(_base.artist,_base.album).then(ok=>{
+      if(!ok)return;
+      if(tracklist.length){
+        tracklist.forEach(function(tr){S.lib.push({id:genId(),title:tr.title,artist:_base.artist,album:_base.album,genre:_base.genre,bpm:null,key:null,mode:null,energy:null,position:tr.position||''});});
+      }else{const tr={..._base,id:_base.id||genId()};if(!tr.title&&AV._detail)tr.title=AV._detail.title||'Untitled';S.lib.push(tr);}
+      saveLib();closeAddConfirm();renderLib();
+    });
+    return;}
+  if(t.id==='av-kw-btn'){renderAddKeywords();return;}
   const playBtn=t.closest('.av-track-play')||((t.classList.contains('av-track-title'))?t:null);
   if(playBtn&&(playBtn.dataset.ptitle||playBtn.dataset.partist)){const pk=playBtn.dataset.pkey||'';playPreview(playBtn.dataset.partist||'',playBtn.dataset.ptitle||'',pk);return;}
   if(t.id==='av-rebrows'){
@@ -1225,7 +1267,7 @@ document.addEventListener('click',e=>{
     else{closeAddSrc();AV.track={id:genId()};openAddConfirm();renderAddSearch();}
     return;
   }
-  if(t.id==='au-search-btn'){
+  if(t.id==='av-search-btn'){
     const q=(document.getElementById('av-q')||{}).value||'';
     AV.query=q;
     if(q){const btn=document.getElementById('av-search-btn');if(btn)btn.textContent='...';searchDiscogs(q).then(r=>{AV.results=r;renderAddSearch();});}
@@ -1238,8 +1280,15 @@ document.addEventListener('click',e=>{
   if(t.id==='av-rescan'){closeAddConfirm();if(AV.src==='camera')document.getElementById('cam-input').click();else document.getElementById('photo-input').click();return;}
   if(t.id==='av-back'){if(AV.step==='edit'||AV.step==='keywords')renderAddResult();else renderAddSearch();return;}
   if(t.id==='av-save'){doSaveTrack();return;}
+  if(t.id==='dup-add-anyway'){document.getElementById('dup-overlay').classList.add('hidden');if(_dupResolve){_dupResolve(true);_dupResolve=null;}return;}
+  if(t.id==='dup-cancel'){document.getElementById('dup-overlay').classList.add('hidden');if(_dupResolve){_dupResolve(false);_dupResolve=null;}return;}
+  if(t.id==='batch-close'||t.id==='batch-cancel'){document.getElementById('batch-overlay').classList.add('hidden');return;}
+  if(t.id==='batch-add-all'){doBatchAdd();return;}
+  const batchTog=t.closest('.batch-tog');
+  if(batchTog){const bi=parseInt(batchTog.dataset.bi);if(_batchItems[bi])_batchItems[bi].confirmed=!_batchItems[bi].confirmed;renderBatchOverlay();return;}
 });
 
+document.getElementById('lib-q').addEventListener('input',e=>{S.libQ=e.target.value;renderLib();});
 document.getElementById('live-q').addEventListener('input',e=>doLiveSearch(e.target.value));
 document.getElementById('next-q').addEventListener('input',e=>{
   const q=e.target.value.trim().toLowerCase();
@@ -1250,15 +1299,102 @@ document.getElementById('next-q').addEventListener('input',e=>{
   el.innerHTML=hits.map(t=>'<div class="next-row" data-nid="'+t.id+'"><div class="nr-title">'+t.title+'</div><div class="nr-sub">'+t.artist+(t.genre?' · '+t.genre:'')+'</div></div>').join('');
   el.style.display='block';
 });
-document.addEventListener('keydown',e=>{
-  if(e.key==='Escape'){ 
-    document.getElementById('live-results').style.display='none';
-    document.getElementById('genre-overlay').classList.add('hidden');
-    document.getElementById('col-overlay').classList.add('hidden');
-    document.getElementById('add-src-overlay').classList.add('hidden');
-    document.getElementById('add-confirm-overlay').classList.add('hidden');
-    stopListening();
+// ── Duplicate detection ──────────────────────────────────────────────────────────────────────────
+let _dupResolve=null;
+function findDuplicate(artist,album){
+  const a=(artist||'').toLowerCase().trim(),b=(album||'').toLowerCase().trim();
+  if(!a&&!b)return null;
+  return S.lib.find(t=>(t.artist||'').toLowerCase().trim()===a&&(t.album||'').toLowerCase().trim()===b)||null;
+}
+function checkDuplicate(artist,album){
+  return new Promise(resolve=>{
+    const dup=findDuplicate(artist,album);
+    if(!dup){resolve(true);return;}
+    const el=document.getElementById('dup-info');
+    if(el)el.textContent=(dup.artist||'')+(dup.album?' — '+dup.album:'');
+    document.getElementById('dup-overlay').classList.remove('hidden');
+    _dupResolve=resolve;
+  });
+}
+
+// ── Batch Add ──────────────────────────────────────────────────────────────────────────
+let _batchItems=[];
+async function handleBatchFiles(files){
+  _batchItems=Array.from(files).map(()=>({loading:true,confirmed:true,photo:'',artist:'',album:'',tracks:[],dup:false}));
+  document.getElementById('batch-overlay').classList.remove('hidden');
+  renderBatchOverlay();
+  for(let i=0;i<files.length;i++){
+    try{
+      const url=await new Promise(res=>photoToDataUrl(files[i],res));
+      _batchItems[i].photo=url;
+      let q='';
+      if(cfg.geminiKey){
+        const v=await analyzePhotoWithGemini(url);
+        if(v&&(v.artist||v.album)){q=[v.artist,v.album].filter(Boolean).join(' ');_batchItems[i].artist=v.artist||'';_batchItems[i].album=v.album||'';}
+      }
+      if(cfg.discogsToken&&q){
+        const res=await searchDiscogs(q);
+        if(res.length){
+          const d=await fetchReleaseDetail(res[0].id);
+          _batchItems[i].tracks=(d&&d.tracklist)||[];
+          const parts=(res[0].title||'').split(' - ');
+          if(parts.length>1){_batchItems[i].artist=parts[0].trim();_batchItems[i].album=parts.slice(1).join(' - ').trim();}
+          else if(res[0].title){_batchItems[i].album=res[0].title;}
+        }
+      }
+      _batchItems[i].dup=!!findDuplicate(_batchItems[i].artist,_batchItems[i].album);
+    }catch(e){console.error('[Batch] photo',i,e);}
+    _batchItems[i].loading=false;
+    renderBatchOverlay();
   }
+}
+function renderBatchOverlay(){
+  document.getElementById('batch-body').innerHTML=_batchItems.map((r,i)=>{
+    if(r.loading)return'<div style="padding:12px 0;color:#555;font-size:12px;border-bottom:1px solid #1e1e1e">📷 Processing photo '+(i+1)+'…</div>';
+    const label=(r.artist||r.album)?((r.artist||'?')+' — '+(r.album||'?')):'Unknown record';
+    const sub=r.tracks.length?r.tracks.length+' tracks':'No tracks found';
+    return'<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #1e1e1e">'+
+      (r.photo?'<img src="'+r.photo+'" style="width:44px;height:44px;border-radius:7px;object-fit:cover;flex-shrink:0">':'<div style="width:44px;height:44px;background:#222;border-radius:7px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#444;font-size:18px">♪</div>')+
+      '<div style="flex:1;min-width:0">'+
+        '<div style="font-size:12px;font-weight:600;color:#f0f0f0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+label+'</div>'+
+        '<div style="font-size:10px;color:#666;margin-top:2px">'+sub+(r.dup?' · <span style="color:#f59e0b">⚠ already in library</span>':'')+'</div>'+
+      '</div>'+
+      '<button class="batch-tog" data-bi="'+i+'" style="width:30px;height:30px;border-radius:50%;border:2px solid '+(r.confirmed?'#7c3aed':'#444')+';background:'+(r.confirmed?'#7c3aed':'transparent')+';color:#fff;cursor:pointer;font-size:13px;flex-shrink:0;line-height:1">'+(r.confirmed?'✓':'')+'</button>'+
+    '</div>';
+  }).join('')||'<p style="color:#555;font-size:12px;padding:16px 0">No photos to process.</p>';
+}
+async function doBatchAdd(){
+  const toAdd=_batchItems.filter(r=>!r.loading&&r.confirmed);
+  if(!toAdd.length){document.getElementById('batch-overlay').classList.add('hidden');return;}
+  let added=0;
+  for(const r of toAdd){
+    if(r.dup){
+      const ok=await checkDuplicate(r.artist,r.album);
+      if(!ok)continue;
+    }
+    if(r.tracks.length){
+      r.tracks.forEach(tr=>S.lib.push({id:genId(),title:tr.title,artist:r.artist,album:r.album,genre:'',bpm:null,key:null,mode:null,energy:null,position:tr.position||''}));
+    }else{
+      S.lib.push({id:genId(),title:r.album||'Untitled',artist:r.artist||'',album:r.album||'',genre:'',bpm:null,key:null,mode:null,energy:null});
+    }
+    added++;
+  }
+  saveLib();document.getElementById('batch-overlay').classList.add('hidden');renderLib();
+  if(added)alert(added+' record'+(added!==1?'s':'')+' added to library.');
+}
+
+// ── Tap-outside-to-close all overlays ───────────────────────────────────────────────────────────
+[
+  ['genre-overlay',function(){document.getElementById('genre-overlay').classList.add('hidden');renderLib();}],
+  ['col-overlay',function(){document.getElementById('col-overlay').classList.add('hidden');saveCols();if(S.tab==='live')renderSugg();}],
+  ['lib-col-overlay',function(){document.getElementById('lib-col-overlay').classList.add('hidden');saveLibCols();renderLib();}],
+  ['add-src-overlay',closeAddSrc],
+  ['add-confirm-overlay',closeAddConfirm],
+  ['batch-overlay',function(){document.getElementById('batch-overlay').classList.add('hidden');}],
+  ['dup-overlay',function(){document.getElementById('dup-overlay').classList.add('hidden');if(_dupResolve){_dupResolve(false);_dupResolve=null;}}],
+].forEach(function(pair){
+  var el=document.getElementById(pair[0]);
+  if(el)el.addEventListener('click',function(e){if(e.target===el)pair[1]();});
 });
 
 loadAll();

@@ -1210,7 +1210,8 @@ function buildFromDiscogs(r,detail){
   const artist=parts.length>1?parts[0].trim():(detail?.artists_sort||'');
   const album=parts.length>1?parts.slice(1).join(' - ').trim():(r.title||'');
   const genres=(r.genre||r.style||detail?.genres||[]);
-  return{id:genId(),title:album,artist,album,genre:genres[0]||'',bpm:null,key:null,mode:null,energy:null};
+  const photo=(detail&&detail.images&&detail.images[0]&&detail.images[0].uri)||r.cover_image||r.thumb||'';
+  return{id:genId(),title:album,artist,album,genre:genres[0]||'',bpm:null,key:null,mode:null,energy:null,photo};
 }
 function parseKeyStr(val){
   const cam=/^(\d{1,2})([AB])$/i.exec(val.trim());
@@ -1234,7 +1235,7 @@ async function doSaveTrack(){
     document.querySelectorAll('.av-tl-title').forEach(function(inp){edited[inp.dataset.tli]=inp.value;});
     tracklist.forEach(function(tr,i){
       const title=edited[i]!==undefined?edited[i]:tr.title;
-      S.lib.push({id:genId(),title:title||tr.title,artist:base.artist,album:base.album,genre:base.genre,bpm:null,key:null,mode:null,energy:null,position:tr.position||''});
+      S.lib.push({id:genId(),title:title||tr.title,artist:base.artist,album:base.album,genre:base.genre,bpm:null,key:null,mode:null,energy:null,position:tr.position||'',photo:base.photo||''});
     });
   }else{
     const t={...base,id:base.id||genId()};
@@ -1431,7 +1432,7 @@ document.addEventListener('click',e=>{
     checkDuplicate(_base.artist,_base.album).then(ok=>{
       if(!ok)return;
       if(tracklist.length){
-        tracklist.forEach(function(tr){S.lib.push({id:genId(),title:tr.title,artist:_base.artist,album:_base.album,genre:_base.genre,bpm:null,key:null,mode:null,energy:null,position:tr.position||''});});
+        tracklist.forEach(function(tr){S.lib.push({id:genId(),title:tr.title,artist:_base.artist,album:_base.album,genre:_base.genre,bpm:null,key:null,mode:null,energy:null,position:tr.position||'',photo:_base.photo||''});});
       }else{const tr={..._base,id:_base.id||genId()};if(!tr.title&&AV._detail)tr.title=AV._detail.title||'Untitled';S.lib.push(tr);}
       saveLib();closeAddConfirm();renderLib();
     });

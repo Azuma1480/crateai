@@ -1121,16 +1121,15 @@ function closeAddConfirm(){
 function photoToDataUrl(file,cb){const r=new FileReader();r.onload=e=>cb(e.target.result);r.readAsDataURL(file);}
 async function searchDiscogs(q){
   const tok=cfg.discogsToken;
-  if(!tok)return[];
+  const url=`https://api.discogs.com/database/search?q=${encodeURIComponent(q)}&type=release&per_page=6`+(tok?`&token=${tok}`:'');
   try{
-    const r=await fetch(`https://api.discogs.com/database/search?q=${encodeURIComponent(q)}&type=release&per_page=6&token=${tok}`,{headers:{'User-Agent':'CrateAI/1.0'}});
+    const r=await fetch(url,{headers:{'User-Agent':'CrateAI/1.0'}});
     const d=await r.json();return(d.results||[]).slice(0,6);
   }catch(e){return[];}
 }
 function renderAddSearch(){
   AV.step='search';
   document.getElementById('add-confirm-title').textContent='Find Record';
-  const hasTok=!!cfg.discogsToken;
   let ph=AV.photo?'<img src="'+AV.photo+'" style="width:100%;max-height:130px;object-fit:cover;border-radius:8px;margin-bottom:10px">':'';
   let res='';
   if(AV.results.length){
@@ -1144,9 +1143,8 @@ function renderAddSearch(){
   document.getElementById('add-confirm-body').innerHTML=ph+
     '<div class="add-field"><label>Artist / Album name</label>'+
     '<div style="display:flex;gap:6px"><input type="text" class="inp f1" id="av-q" value="'+AV.query+'" placeholder="e.g. Chaka Khan Ain\'t Nobody">'+
-    (hasTok?'<button class="btn-sm" id="av-search-btn">Search</button>':'')+
-    '</div></div>'+
-    (!hasTok?'<p style="color:#555;font-size:11px;margin-bottom:6px">Add Discogs token in Settings to enable search.</p>':'')+res;
+    '<button class="btn-sm" id="av-search-btn">Search</button>'+
+    '</div></div>'+res;
   document.getElementById('add-confirm-ft').innerHTML=
     '<button class="btn-ghost" id="av-manual">Enter manually</button>'+
     (AV.src!=='browse'?'<button class="btn-ghost" id="av-rescan">Re-photo</button>':'')+
@@ -1239,8 +1237,9 @@ async function doSaveTrack(){
   saveLib();closeAddConfirm();renderLib();
 }
 async function fetchReleaseDetail(id){
-  const tok=cfg.discogsToken;if(!tok||!id)return null;
-  try{const r=await fetch('https://api.discogs.com/releases/'+id+'?token='+tok,{headers:{'User-Agent':'CrateAI/1.0'}});return await r.json();}catch(e){return null;}
+  const tok=cfg.discogsToken;if(!id)return null;
+  const url='https://api.discogs.com/releases/'+id+(tok?'?token='+tok:'');
+  try{const r=await fetch(url,{headers:{'User-Agent':'CrateAI/1.0'}});return await r.json();}catch(e){return null;}
 }
 function renderAddResult(loading){
   AV.step='result';

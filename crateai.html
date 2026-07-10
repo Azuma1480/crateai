@@ -619,7 +619,7 @@ function renderNow(){
     '<div style="display:flex;gap:9px;align-items:flex-start">'+
       '<div class="vin-lg">'+vinSVG(46)+'</div>'+
       '<div style="flex:1;min-width:0">'+
-        '<div class="s13 fw6 trunc" style="color:#39ff14">'+now.title+'</div>'+
+        '<div class="s13 fw6 trunc" style="color:#39ff14">'+(now.title||now.album||'')+'</div>'+
         '<div class="s11 t2 trunc">'+now.artist+'</div>'+
         '<div class="s10 t3 trunc">'+(now.album||'')+'</div>'+
         '<div style="margin-top:5px">'+
@@ -669,7 +669,7 @@ function renderSugg(){
       vc.forEach(c=>{
         if(c.id==='rank')html+='<td><span class="rank-num">'+t._rank+'</span></td>';
         else if(c.id==='art')html+='<td><div class="vin" style="width:28px;height:28px">'+vinSVG(28)+'</div></td>';
-        else if(c.id==='title')html+='<td style="max-width:'+c.w+'px"><div class="trunc s11">'+t.title+'</div></td>';
+        else if(c.id==='title')html+='<td style="max-width:'+c.w+'px"><div class="trunc s11">'+(t.title||t.album||'')+'</div></td>';
         else if(c.id==='key'){
           const ok=dispKey(t.key,t.mode,fmt);
           const ak=(kam&&t._ak!=null)?dispKey(t._ak,t._am,fmt):null;
@@ -823,7 +823,7 @@ function doLiveSearch(q){
     '<div class="trow" data-pick="'+t.id+'" style="padding:7px 10px">'+
       '<div class="vin">'+vinSVG(30)+'</div>'+
       '<div style="flex:1;min-width:0">'+
-        '<div class="s12 t1 trunc">'+t.title+'</div>'+
+        '<div class="s12 t1 trunc">'+(t.title||t.album||'')+'</div>'+
         '<div class="s10 t3 trunc">'+t.artist+(t.bpm?' · '+t.bpm+' BPM':'')+' · '+dispKey(t.key,t.mode,cfg.keyFormat)+'</div>'+
       '</div>'+
     '</div>'
@@ -879,7 +879,7 @@ async function startListening(){
                     re.innerHTML='<div style="padding:4px 10px;font-size:10px;color:#7c3aed">BPM match: ~'+bpm+'</div>'+
                       matches.slice(0,6).map(t=>'<div class="trow" data-pick="'+t.id+'" style="padding:7px 10px">'+
                         '<div class="vin">'+vinSVG(30)+'</div>'+
-                        '<div style="flex:1;min-width:0"><div class="s12 t1 trunc">'+t.title+'</div><div class="s10 t3 trunc">'+t.artist+' · '+t.bpm+' BPM</div></div>'+
+                        '<div style="flex:1;min-width:0"><div class="s12 t1 trunc">'+(t.title||t.album||'')+'</div><div class="s10 t3 trunc">'+t.artist+' · '+t.bpm+' BPM</div></div>'+
                       '</div>').join('');
                   }
                 }
@@ -1296,7 +1296,7 @@ document.getElementById('next-q').addEventListener('input',e=>{
   if(!q){el.style.display='none';el.innerHTML='';return;}
   const hits=S.lib.filter(t=>(t.title||'').toLowerCase().includes(q)||(t.artist||'').toLowerCase().includes(q)||(t.album||'').toLowerCase().includes(q)).slice(0,20);
   if(!hits.length){el.style.display='none';el.innerHTML='';return;}
-  el.innerHTML=hits.map(t=>'<div class="next-row" data-nid="'+t.id+'"><div class="nr-title">'+t.title+'</div><div class="nr-sub">'+t.artist+(t.genre?' · '+t.genre:'')+'</div></div>').join('');
+  el.innerHTML=hits.map(t=>'<div class="next-row" data-nid="'+t.id+'"><div class="nr-title">'+(t.title||t.album||'')+'</div><div class="nr-sub">'+t.artist+(t.genre?' · '+t.genre:'')+'</div></div>').join('');
   el.style.display='block';
 });
 // ── Duplicate detection ──────────────────────────────────────────────────────────────────────────

@@ -1349,13 +1349,13 @@ function handleFileCapture(file){
       const v=await analyzePhotoWithGemini(url);
       if(v&&(v.artist||v.album)){q=[v.artist,v.album].filter(Boolean).join(' ');AV.query=q;}
     }
-    if(cfg.discogsToken&&q){
+    if(q){
       const results=await searchDiscogs(q);
       AV.results=results;
       if(results.length){AV._shown=[0];AV._detail=await fetchReleaseDetail(results[0].id);AV.track=buildFromDiscogs(results[0],AV._detail);AV.track._di=0;}
       renderAddResult();
     }else{
-      // No auto-query (Gemini not set) or no Discogs token → show search form with photo
+      // No Gemini key or Gemini failed to identify → show search form with photo
       renderAddSearch();
     }
   });
@@ -1556,7 +1556,7 @@ async function handleBatchFiles(files){
         const v=await analyzePhotoWithGemini(url);
         if(v&&(v.artist||v.album)){q=[v.artist,v.album].filter(Boolean).join(' ');_batchItems[i].artist=v.artist||'';_batchItems[i].album=v.album||'';}
       }
-      if(cfg.discogsToken&&q){
+      if(q){
         const res=await searchDiscogs(q);
         if(res.length){
           const d=await fetchReleaseDetail(res[0].id);

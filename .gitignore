@@ -1,0 +1,12 @@
+# Local dependencies and generated builds
+crate-ai/node_modules/
+crate-ai/dist/
+
+# Local environment configuration and credentials
+.env
+.env.*
+!.env.example
+
+# OS files
+.DS_Store
+Thumbs.db

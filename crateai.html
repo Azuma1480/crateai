@@ -680,8 +680,17 @@ function renderLib(){
     });
     el.innerHTML='<div style="overflow-x:auto">'+inner+'</div>';
   }else if(v==='bpm'){
-    fl.sort((a,b)=>(a.bpm||0)-(b.bpm||0));
-    el.innerHTML=_libTable(fl.map(t=>_libTrackRow(t)));
+    // Group by BPM value, sorted low→high; tracks within each BPM alphabetical
+    const bpmMap={};
+    fl.forEach(t=>{const b=t.bpm!=null?String(t.bpm):'--';if(!bpmMap[b])bpmMap[b]=[];bpmMap[b].push(t);});
+    const bpmKeys=Object.keys(bpmMap).sort((a,b)=>a==='--'?1:b==='--'?-1:Number(a)-Number(b));
+    let inner='';
+    bpmKeys.forEach(b=>{
+      const tracks=bpmMap[b].sort((x,y)=>(x.title||'').localeCompare(y.title||''));
+      inner+='<div class="group-hd" style="color:#7c3aed">'+b+' <span style="color:#444;font-size:9px;font-weight:400;text-transform:none;letter-spacing:0">('+tracks.length+')</span></div>'+
+        _libTableInner(tracks.map(t=>_libTrackRow(t)));
+    });
+    el.innerHTML='<div style="overflow-x:auto">'+inner+'</div>';
   }else if(v==='genre'){
     const genreMap={};
     fl.forEach(t=>{const g=t.genre||'Other';if(!genreMap[g])genreMap[g]=[];genreMap[g].push(t);});
@@ -694,8 +703,18 @@ function renderLib(){
     });
     el.innerHTML='<div style="overflow-x:auto">'+inner+'</div>';
   }else if(v==='rating'){
-    fl.sort((a,b)=>(ratings[b.id]||0)-(ratings[a.id]||0)||(a.title||'').localeCompare(b.title||''));
-    el.innerHTML=_libTable(fl.map(t=>_libTrackRow(t)));
+    // Group by rating high→low; tracks within each rating alphabetical
+    const ratingMap={};
+    fl.forEach(t=>{const r=ratings[t.id]||0;if(!ratingMap[r])ratingMap[r]=[];ratingMap[r].push(t);});
+    const ratingKeys=Object.keys(ratingMap).map(Number).sort((a,b)=>b-a);
+    const starLabel=n=>n>0?'★'.repeat(n):'Unrated';
+    let inner='';
+    ratingKeys.forEach(r=>{
+      const tracks=ratingMap[r].sort((x,y)=>(x.title||'').localeCompare(y.title||''));
+      inner+='<div class="group-hd" style="color:#f59e0b;letter-spacing:0;text-transform:none;font-size:12px">'+starLabel(r)+' <span style="color:#444;font-size:9px;font-weight:400">('+tracks.length+')</span></div>'+
+        _libTableInner(tracks.map(t=>_libTrackRow(t)));
+    });
+    el.innerHTML='<div style="overflow-x:auto">'+inner+'</div>';
   }
 }
 function renderLibColEditor(){

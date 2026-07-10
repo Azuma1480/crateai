@@ -264,7 +264,7 @@ body.sim-land #frame{width:740px;height:420px}
         <span class="panel-title">Library Columns</span>
         <button class="icon-btn" id="lib-col-close">x</button>
       </div>
-      <div id="lib-col-list" style="overflow-y:auto;flex:1"></div>
+      <div id="lib-col-list" style="overflow-y:auto;flex:1;min-height:0"></div>
       <div class="panel-ft">
         <button class="btn-ghost" id="lib-col-reset">Reset defaults</button>
         <button class="btn" id="lib-col-done">Done</button>
@@ -280,15 +280,17 @@ body.sim-land #frame{width:740px;height:420px}
         <button class="icon-btn" id="add-src-close">✕</button>
       </div>
       <div style="padding:12px;display:flex;flex-direction:column;gap:9px">
-        <label class="add-src-opt" id="cam-lbl" for="cam-input">
+        <label class="add-src-opt" id="cam-lbl" style="position:relative;overflow:hidden">
           <span class="add-src-opt-icon">📷</span>
           <span class="add-src-opt-label">Camera</span>
           <span class="add-src-opt-sub">Take a photo of the record</span>
+          <input type="file" id="cam-input" accept="image/*" capture="environment" style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer">
         </label>
-        <label class="add-src-opt" id="photo-lbl" for="photo-input">
+        <label class="add-src-opt" id="photo-lbl" style="position:relative;overflow:hidden">
           <span class="add-src-opt-icon">🖼</span>
           <span class="add-src-opt-label">Photos</span>
           <span class="add-src-opt-sub">Choose from photo library</span>
+          <input type="file" id="photo-input" accept="image/*" multiple style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer">
         </label>
         <button class="add-src-opt" data-src="browse">
           <span class="add-src-opt-icon">🔍</span>
@@ -298,10 +300,6 @@ body.sim-land #frame{width:740px;height:420px}
       </div>
     </div>
   </div>
-
-  <!-- File inputs for photo capture (outside overlay so they're always in DOM) -->
-  <input type="file" id="cam-input" accept="image/*" capture="environment" style="position:fixed;top:-999px;left:-999px;opacity:0;width:1px;height:1px">
-  <input type="file" id="photo-input" accept="image/*" multiple style="position:fixed;top:-999px;left:-999px;opacity:0;width:1px;height:1px">
 
   <!-- Add Vinyl: search / confirm / edit -->
   <div id="add-confirm-overlay" class="overlay hidden">
@@ -1336,8 +1334,11 @@ function handleFileCapture(file){
       const results=await searchDiscogs(q);
       AV.results=results;
       if(results.length){AV._shown=[0];AV._detail=await fetchReleaseDetail(results[0].id);AV.track=buildFromDiscogs(results[0],AV._detail);AV.track._di=0;}
+      renderAddResult();
+    }else{
+      // No auto-query (Gemini not set) or no Discogs token → show search form with photo
+      renderAddSearch();
     }
-    renderAddResult();
   });
 }
 document.getElementById('cam-input').addEventListener('change',e=>{handleFileCapture(e.target.files[0]);e.target.value='';});

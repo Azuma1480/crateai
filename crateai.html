@@ -176,10 +176,13 @@ body.sim-land #frame{width:740px;height:420px}
         <div class="row">
           <input type="search" class="inp f1" id="live-q" placeholder="Search library to set current track...">
           <button class="icon-btn" id="recog-btn" title="Detect BPM from mic">&#127897;</button>
+          <button class="icon-btn" id="key-detect-btn" title="Detect Key from mic">&#9837;</button>
         </div>
         <div id="listening-bar" style="display:none" class="listening-bar">
           <span class="pulse"></span>
-          Listening... BPM: <strong id="bpm-out">--</strong>
+          <span id="listen-label">Listening...</span>
+          BPM: <strong id="bpm-out">--</strong>
+          <span id="key-detect-out" style="display:none">&nbsp;&nbsp;Key: <strong id="key-out">--</strong></span>
           &nbsp;<button style="background:none;border:none;color:#555;font-size:10px;cursor:pointer" id="stop-recog">Stop</button>
         </div>
         <div id="live-results" style="position:absolute;left:0;right:0;top:100%;z-index:50;background:#111;border-bottom:1px solid #252525;display:none;max-height:160px;overflow-y:auto"></div>
@@ -456,7 +459,7 @@ async function playPreview(artist,title,key){
 }
 function savePlayHistory(){try{localStorage.setItem('ca2_played',JSON.stringify(playHistory));}catch(e){}debouncedSync();}
 function setNow(track){if(track){playHistory[track.id]=Date.now();savePlayHistory();}S.now=track||null;}
-function timeSince(ts){const s=Math.floor((Date.now()-ts)/1000);const m=Math.floor(s/60),ss=s%60;return(m<10?'0':'')+m+':'+(ss<10?'0':'')+ss;}
+function timeSince(ts){const s=Math.floor((Date.now()-ts)/1000);const h=Math.floor(s/3600),m=Math.floor((s%3600)/60);return(h<10?'0':'')+h+':'+(m<10?'0':'')+m;}
 function debouncedSync(){if(!fbUser)return;clearTimeout(_syncTimer);_syncTimer=setTimeout(syncToCloud,2000);}
 function showSyncStatus(msg){const el=document.getElementById('sync-status');if(el){el.textContent=msg;setTimeout(()=>{el.textContent='';},3000);}}
 function initFirebase(){
@@ -900,7 +903,87 @@ function stopListening(){
   if(S.audioCtx)S.audioCtx.close().catch(()=>{});
   S.mediaStream=null;S.audioCtx=null;
   const rb=document.getElementById('recog-btn');if(rb)rb.classList.remove('on');
-  const lb=document.getElementById('listening-bar');if(lb)lb.style.display='none';
+  if(!_keyDetectActive){const lb=document.getElementById('listening-bar');if(lb)lb.style.display='none';}
+}
+
+// ── Key Detection (Krumhansl-Schmuckler) ─────────────────────────────────────
+const KS_MAJ=[6.35,2.23,3.48,2.33,4.38,4.09,2.52,5.19,2.39,3.66,2.29,2.88];
+const KS_MIN=[6.33,2.68,3.52,5.38,2.60,3.53,2.54,4.75,3.98,2.69,3.34,3.17];
+let _keyDetectStream=null,_keyDetectCtx=null,_keyDetectActive=false;
+let _chromaAccum=new Float32Array(12),_chromaFrames=0;
+
+function _detectKeyFromChroma(ch){
+  const sum=ch.reduce((a,b)=>a+b,0);if(!sum)return null;
+  const c=ch.map(x=>x/sum);
+  let best=-Infinity,bk=0,bm=1;
+  for(let r=0;r<12;r++){
+    let sm=0,sn=0;
+    for(let i=0;i<12;i++){sm+=c[i]*KS_MAJ[(i-r+12)%12];sn+=c[i]*KS_MIN[(i-r+12)%12];}
+    if(sm>best){best=sm;bk=r;bm=1;}
+    if(sn>best){best=sn;bk=r;bm=0;}
+  }
+  return{key:bk,mode:bm};
+}
+function _applyDetectedKey(res){
+  const ko=document.getElementById('key-out');
+  if(ko)ko.textContent=dispKey(res.key,res.mode,cfg.keyFormat);
+  if(S.now){
+    const rec=S.lib.find(r=>r.id===S.now.id);
+    if(rec){rec.key=res.key;rec.mode=res.mode;saveLib();}
+    S.now={...S.now,key:res.key,mode:res.mode};
+    renderNow();if(S.tab==='live')renderSugg();
+  }
+}
+async function startKeyDetect(){
+  if(_keyDetectActive){stopKeyDetect();return;}
+  try{
+    _keyDetectStream=await navigator.mediaDevices.getUserMedia({audio:true,video:false});
+    _keyDetectCtx=new AudioContext();
+    const src=_keyDetectCtx.createMediaStreamSource(_keyDetectStream);
+    const an=_keyDetectCtx.createAnalyser();an.fftSize=8192;src.connect(an);
+    _keyDetectActive=true;_chromaAccum=new Float32Array(12);_chromaFrames=0;
+    const kb=document.getElementById('key-detect-btn');if(kb)kb.classList.add('on');
+    const lb=document.getElementById('listening-bar');if(lb)lb.style.display='flex';
+    const kdo=document.getElementById('key-detect-out');if(kdo)kdo.style.display='inline';
+    const ko=document.getElementById('key-out');if(ko)ko.textContent='--';
+    const ll=document.getElementById('listen-label');if(ll)ll.textContent='Detecting key...';
+    const data=new Float32Array(an.frequencyBinCount);
+    const sr=_keyDetectCtx.sampleRate;
+    function detect(){
+      if(!_keyDetectActive)return;
+      an.getFloatFrequencyData(data);
+      for(let i=1;i<data.length;i++){
+        const freq=i*sr/an.fftSize;
+        if(freq<80||freq>4200)continue;
+        const mag=Math.pow(10,data[i]/20);
+        if(mag<0.001)continue;
+        const midi=12*Math.log2(freq/440)+69;
+        const pc=((Math.round(midi)%12)+12)%12;
+        _chromaAccum[pc]+=mag;
+      }
+      _chromaFrames++;
+      if(_chromaFrames%60===0){
+        const res=_detectKeyFromChroma(_chromaAccum);
+        if(res){
+          const ko=document.getElementById('key-out');
+          if(ko)ko.textContent=dispKey(res.key,res.mode,cfg.keyFormat);
+          if(_chromaFrames>=360){_applyDetectedKey(res);stopKeyDetect();return;}
+        }
+      }
+      requestAnimationFrame(detect);
+    }
+    detect();
+  }catch(e){alert('Microphone access denied');_keyDetectActive=false;}
+}
+function stopKeyDetect(){
+  _keyDetectActive=false;
+  if(_keyDetectStream)_keyDetectStream.getTracks().forEach(t=>t.stop());
+  if(_keyDetectCtx)_keyDetectCtx.close().catch(()=>{});
+  _keyDetectStream=null;_keyDetectCtx=null;
+  const kb=document.getElementById('key-detect-btn');if(kb)kb.classList.remove('on');
+  const kdo=document.getElementById('key-detect-out');if(kdo)kdo.style.display='none';
+  if(!S.listening){const lb=document.getElementById('listening-bar');if(lb)lb.style.display='none';}
+  else{const ll=document.getElementById('listen-label');if(ll)ll.textContent='Listening...';}
 }
 
 // ── Add Vinyl ────────────────────────────────────────────────────────────────
@@ -1224,10 +1307,22 @@ document.addEventListener('click',e=>{
   const th=t.closest('th[data-sort]');
   if(th){const c=th.dataset.sort;if(S.sortCol===c)S.sortDir=S.sortDir==='asc'?'desc':'asc';else{S.sortCol=c;S.sortDir='asc';}renderSugg();return;}
   const suggRow=t.closest('tr[data-tid]');
-  if(suggRow&&S.tab==='live'&&!t.closest('.stars')){const id=suggRow.dataset.tid;const f=S.lib.find(x=>x.id===id);if(f){setNow(f);renderLive();}return;}
+  if(suggRow&&S.tab==='live'&&!t.closest('.stars')){
+    const id=suggRow.dataset.tid;const f=S.lib.find(x=>x.id===id);
+    if(f){
+      if(cfg.keyAdaptation&&S.now){
+        const sugg=getSugg(S.now,S.lib).find(s=>s.id===id);
+        if(sugg&&sugg._ak!=null)setNow({...f,bpm:sugg._ab,key:sugg._ak,mode:sugg._am});
+        else setNow(f);
+      }else setNow(f);
+      renderLive();
+    }
+    return;
+  }
   if(t.id==='edit-btn'){renderColEditor();document.getElementById('col-overlay').classList.remove('hidden');return;}
   if(t.id==='recog-btn'){startListening();return;}
-  if(t.id==='stop-recog'){stopListening();return;}
+  if(t.id==='key-detect-btn'){startKeyDetect();return;}
+  if(t.id==='stop-recog'){stopListening();stopKeyDetect();return;}
   if(t.id==='genre-btn'){renderGenrePanel();document.getElementById('genre-overlay').classList.remove('hidden');return;}
   if(t.id==='genre-close'||t.id==='genre-done'){document.getElementById('genre-overlay').classList.add('hidden');renderLib();return;}
   if(t.id==='genre-clear'){S.activeGenres=[];renderGenrePanel();return;}

@@ -1561,7 +1561,6 @@ async function handleBatchFiles(files){
   for(let i=0;i<files.length;i++){
     try{
       const url=await new Promise(res=>photoToDataUrl(files[i],res));
-      _batchItems[i].photo=url;
       let q='';
       if(cfg.geminiKey){
         const v=await analyzePhotoWithGemini(url);
@@ -1572,6 +1571,7 @@ async function handleBatchFiles(files){
         if(res.length){
           const d=await fetchReleaseDetail(res[0].id);
           _batchItems[i].tracks=(d&&d.tracklist)||[];
+          _batchItems[i].photo=(d&&d.images&&d.images[0]&&d.images[0].uri)||res[0].cover_image||res[0].thumb||'';
           const parts=(res[0].title||'').split(' - ');
           if(parts.length>1){_batchItems[i].artist=parts[0].trim();_batchItems[i].album=parts.slice(1).join(' - ').trim();}
           else if(res[0].title){_batchItems[i].album=res[0].title;}
@@ -1608,9 +1608,9 @@ async function doBatchAdd(){
       if(!ok)continue;
     }
     if(r.tracks.length){
-      r.tracks.forEach(tr=>S.lib.push({id:genId(),title:tr.title,artist:r.artist,album:r.album,genre:'',bpm:null,key:null,mode:null,energy:null,position:tr.position||''}));
+      r.tracks.forEach(tr=>S.lib.push({id:genId(),title:tr.title,artist:r.artist,album:r.album,genre:'',bpm:null,key:null,mode:null,energy:null,position:tr.position||'',photo:r.photo||''}));
     }else{
-      S.lib.push({id:genId(),title:r.album||'Untitled',artist:r.artist||'',album:r.album||'',genre:'',bpm:null,key:null,mode:null,energy:null});
+      S.lib.push({id:genId(),title:r.album||'Untitled',artist:r.artist||'',album:r.album||'',genre:'',bpm:null,key:null,mode:null,energy:null,photo:r.photo||''});
     }
     added++;
   }

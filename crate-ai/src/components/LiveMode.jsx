@@ -4,6 +4,7 @@ import { getSuggestions } from '../lib/suggestions.js';
 import { toCamelot, keyName } from '../lib/camelot.js';
 import { pitchPercent, shiftKeyByPitch, camelotDelta } from '../lib/kam.js';
 import { gradientFor, buildAlbumArt } from '../lib/art.js';
+import { camelotToKeyMode } from '../lib/rekordbox.js';
 
 export default function LiveMode({
   nowPlaying, setNowPlaying,
@@ -99,7 +100,12 @@ export default function LiveMode({
   const displayKey = (camelotKey, spotifyKey, mode) => {
     const cam = camelotKey ?? toCamelot(spotifyKey, mode);
     if (!cam) return '—';
-    return keyFormat === 'camelot' ? cam : (keyName(spotifyKey, mode) ?? cam);
+    if (keyFormat === 'camelot') return cam;
+    // Musical notation: derive pitch class from the Camelot code when the
+    // track only carries a camelotKey (rekordbox/manual/match-review data).
+    let k = spotifyKey, m = mode;
+    if (k == null) ({ key: k, mode: m } = camelotToKeyMode(cam));
+    return k != null ? keyName(k, m) : cam;
   };
 
   // Build the current → suggestion transition (BPM + key), with signed deltas.

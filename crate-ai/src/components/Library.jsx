@@ -94,7 +94,10 @@ export default function Library({ libraryVersion, setNowPlaying, keyFormat = 'ca
   const displayKey = (track) => {
     const cam = track.camelotKey ?? toCamelot(track.key, track.mode);
     if (!cam) return null;
-    return keyFormat === 'camelot' ? cam : (keyName(track.key, track.mode) ?? cam);
+    if (keyFormat === 'camelot') return cam;
+    let k = track.key, m = track.mode;
+    if (k == null) ({ key: k, mode: m } = camelotToKeyMode(cam));
+    return k != null ? keyName(k, m) : cam;
   };
 
   const switchView = (v) => {

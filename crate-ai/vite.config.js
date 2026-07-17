@@ -2,7 +2,10 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
-const base = process.env.GITHUB_ACTIONS ? '/crateai/' : '/';
+// On Pages the React app is served at /crateai/app/ alongside the legacy
+// prototype at /crateai/ — same origin, so the new app can read the old
+// app's localStorage library directly.
+const base = process.env.GITHUB_ACTIONS ? '/crateai/app/' : '/';
 
 export default defineConfig({
   base,

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { searchDiscogs, getRelease } from '../lib/discogs.js';
 import { searchSpotifyTrack } from '../lib/spotify.js';
 import { getSetting, saveAlbum, saveTracks } from '../lib/db.js';
@@ -394,6 +394,19 @@ function MatchReview({ onImportComplete }) {
   const [progress, setProgress] = useState(null);
   const [error, setError] = useState(null);
   const [importedIds, setImportedIds] = useState(new Set());
+  const [detected, setDetected] = useState(null);
+
+  // The legacy prototype (served at the site root on the same origin) kept
+  // its library in localStorage['ca2_lib'] — detect it for one-tap loading.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('ca2_lib');
+      if (raw) {
+        const tracks = parseOldLibrary(raw);
+        setDetected({ raw, count: tracks.length, albums: groupAlbums(tracks).length });
+      }
+    } catch { /* unreadable/foreign data — ignore */ }
+  }, []);
 
   const handleParse = (text) => {
     setError(null); setRows([]);
@@ -469,6 +482,15 @@ function MatchReview({ onImportComplete }) {
           <code style={{ color: 'var(--accent)' }}> copy(localStorage.getItem('ca2_lib')) </code>
           を実行してコピーし、下に貼り付けてください（またはJSONファイルを選択）。
         </p>
+        {detected && (
+          <button
+            onClick={() => { setRawText(detected.raw); handleParse(detected.raw); }}
+            className="w-full mt-3 rounded-xl px-3 py-3 text-sm font-semibold"
+            style={{ background: 'var(--accent-dim)', border: '1px solid var(--accent)', color: 'var(--accent)' }}
+          >
+            ⚡ この端末で旧ライブラリを検出（{detected.count}曲 / {detected.albums}枚）— タップで読み込む
+          </button>
+        )}
         <textarea
           value={rawText}
           onChange={(e) => { setRawText(e.target.value); handleParse(e.target.value); }}

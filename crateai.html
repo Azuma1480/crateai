@@ -860,6 +860,11 @@ function renderSettings(){
         '</div>'
     )+
     '<div class="set-s">'+
+      '<div class="set-title">Library Export</div>'+
+      '<div class="set-sub">ライブラリをJSONで書き出し（新CrateAIアプリの「照合」タブに読み込めます）</div>'+
+      '<button class="btn-sm" id="export-lib-btn" style="width:100%;margin-top:6px">ライブラリJSONをダウンロード</button>'+
+    '</div>'+
+    '<div class="set-s">'+
       '<div class="set-title">Key Format</div>'+
       '<div class="set-sub">How keys are displayed throughout the app</div>'+
       '<div class="seg">'+
@@ -1489,6 +1494,13 @@ document.addEventListener('click',e=>{
   if(t.id==='fb-signin'){googleSignIn();return;}
   if(t.id==='fb-signout'){fbSignOut();return;}
   if(t.id==='sync-now-btn'){syncToCloud();return;}
+  if(t.id==='export-lib-btn'){
+    const d=localStorage.getItem('ca2_lib')||JSON.stringify(S.lib||[]);
+    const bl=new Blob([d],{type:'application/json'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(bl);a.download='crateai-library.json';a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+    return;
+  }
   const sf=t.closest('[data-sf]');if(sf){cfg.keyFormat=sf.dataset.sf;saveCfg();renderSettings();if(S.tab==='live')renderLive();return;}
   if(t.id==='add-vinyl-btn'){openAddSrc();return;}
   if(t.id==='add-src-close'){closeAddSrc();return;}

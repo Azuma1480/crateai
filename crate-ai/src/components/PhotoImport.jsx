@@ -149,17 +149,17 @@ export default function PhotoImport({ onImportComplete }) {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="bg-[#1a1a1a] rounded-xl p-4">
+    <div className="flex flex-col gap-4">
+      <div className="rounded-xl p-4" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
         <div className="flex items-start justify-between gap-3 mb-3">
           <div>
-            <p className="font-semibold text-gray-100">Photo Builder</p>
-            <p className="text-xs text-gray-500 mt-0.5">
-              写真を見ながら曲リストを作り、JSON経由で追加します
+            <p className="font-semibold" style={{ color: 'var(--text)', fontSize: 14 }}>Photo Builder</p>
+            <p style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 2 }}>
+              写真を見ながら曲リストを作り、ライブラリに追加します
             </p>
           </div>
           {tracks.length > 0 && (
-            <span className="text-xs text-violet-300 bg-violet-900/30 px-2 py-1 rounded-full">
+            <span style={{ fontSize: 11, color: 'var(--accent)', background: 'var(--accent-dim)', padding: '3px 8px', borderRadius: 999 }}>
               {tracks.length} tracks
             </span>
           )}
@@ -174,9 +174,9 @@ export default function PhotoImport({ onImportComplete }) {
             onChange={handlePhotos}
             className="hidden"
           />
-          <span className="w-full bg-[#0f0f0f] border border-[#2a2a2a] text-gray-200 rounded-xl px-3 py-2.5 text-sm font-medium flex items-center justify-center gap-2">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
-              className="w-4 h-4">
+          <span className="w-full rounded-xl px-3 py-2.5 text-sm font-medium flex items-center justify-center gap-2"
+            style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)' }}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
               <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
               <circle cx="12" cy="13" r="4" />
             </svg>
@@ -191,7 +191,8 @@ export default function PhotoImport({ onImportComplete }) {
                 key={`${photo.name}-${index}`}
                 type="button"
                 onClick={() => setPreviewOpen(photo.dataUrl)}
-                className="aspect-square rounded-lg overflow-hidden bg-[#2a2a2a]"
+                className="aspect-square rounded-lg overflow-hidden"
+                style={{ background: 'var(--surface2)' }}
               >
                 <img src={photo.dataUrl} alt={photo.name} className="w-full h-full object-cover" />
               </button>
@@ -200,7 +201,7 @@ export default function PhotoImport({ onImportComplete }) {
         )}
       </div>
 
-      <div className="bg-[#1a1a1a] rounded-xl p-4 space-y-3">
+      <div className="rounded-xl p-4 flex flex-col gap-3" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
         <div className="grid grid-cols-1 gap-3">
           <TextField
             label="Album title"
@@ -223,11 +224,12 @@ export default function PhotoImport({ onImportComplete }) {
               inputMode="numeric"
             />
             <div>
-              <label className="block text-xs text-gray-500 mb-1.5">Genre</label>
+              <label className="block mb-1.5" style={{ fontSize: 11, color: 'var(--text-dim)' }}>Genre</label>
               <select
                 value={album.genre}
                 onChange={(event) => handleChange('genre', event.target.value)}
-                className="w-full bg-[#0f0f0f] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-sm text-gray-200 focus:border-violet-500 focus:outline-none"
+                className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+                style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)' }}
               >
                 <option value="">No genre</option>
                 {GENRES.map((genre) => (
@@ -239,7 +241,7 @@ export default function PhotoImport({ onImportComplete }) {
         </div>
 
         <div>
-          <label className="block text-xs text-gray-500 mb-1.5">Track list</label>
+          <label className="block mb-1.5" style={{ fontSize: 11, color: 'var(--text-dim)' }}>Track list</label>
           <textarea
             value={trackText}
             onChange={(event) => {
@@ -249,26 +251,27 @@ export default function PhotoImport({ onImportComplete }) {
             }}
             placeholder={SAMPLE_TRACKS}
             rows={8}
-            className="w-full bg-[#0f0f0f] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-sm text-gray-100 placeholder-gray-700 focus:border-violet-500 focus:outline-none font-mono leading-5 resize-none"
+            className="w-full rounded-xl px-3 py-2.5 text-sm font-mono leading-5 resize-none outline-none"
+            style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)' }}
           />
-          <p className="text-[11px] text-gray-600 mt-1">
+          <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
             形式: position title - artist duration。artist と duration は省略可。
           </p>
         </div>
       </div>
 
       {tracks.length > 0 && (
-        <div className="bg-[#1a1a1a] rounded-xl overflow-hidden">
+        <div className="rounded-xl overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
           <button
             type="button"
             onClick={() => setPreviewOpen(previewOpen === 'json' ? false : 'json')}
             className="w-full px-4 py-3 flex items-center justify-between text-left"
           >
-            <span className="text-sm font-medium text-gray-200">Generated JSON</span>
-            <span className="text-xs text-gray-500">{previewOpen === 'json' ? 'Hide' : 'View'}</span>
+            <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>Generated data</span>
+            <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{previewOpen === 'json' ? 'Hide' : 'View'}</span>
           </button>
           {previewOpen === 'json' && (
-            <pre className="max-h-56 overflow-auto border-t border-[#2a2a2a] p-3 text-[11px] text-gray-400 whitespace-pre-wrap">
+            <pre className="max-h-56 overflow-auto p-3 whitespace-pre-wrap" style={{ borderTop: '1px solid var(--border)', fontSize: 11, color: 'var(--text-dim)' }}>
               {JSON.stringify(importData, null, 2)}
             </pre>
           )}
@@ -276,12 +279,12 @@ export default function PhotoImport({ onImportComplete }) {
       )}
 
       {message && (
-        <p className="text-xs text-green-400 bg-green-900/20 border border-green-900/40 rounded-xl px-3 py-2">
+        <p className="rounded-xl px-3 py-2" style={{ fontSize: 12, color: '#52d98a', background: 'rgba(82,217,138,0.1)', border: '1px solid rgba(82,217,138,0.3)' }}>
           {message}
         </p>
       )}
       {error && (
-        <p className="text-xs text-red-300 bg-red-900/30 border border-red-700 rounded-xl px-3 py-2">
+        <p className="rounded-xl px-3 py-2" style={{ fontSize: 12, color: '#f2726b', background: 'rgba(242,114,107,0.12)', border: '1px solid rgba(242,114,107,0.4)' }}>
           {error}
         </p>
       )}
@@ -290,17 +293,19 @@ export default function PhotoImport({ onImportComplete }) {
         type="button"
         onClick={handleImport}
         disabled={!canImport || importing}
-        className="w-full bg-violet-600 text-white py-3.5 rounded-xl font-semibold text-sm disabled:opacity-50 disabled:bg-[#2a2a2a]"
+        className="w-full py-3.5 rounded-xl font-semibold text-sm disabled:opacity-50"
+        style={{ background: canImport ? 'var(--accent)' : 'var(--surface)', color: canImport ? 'var(--bg)' : 'var(--text-muted)' }}
       >
         {importing ? 'Importing...' : 'Import to Library'}
       </button>
 
       {previewOpen && previewOpen !== 'json' && (
-        <div className="fixed inset-0 z-50 bg-black/90 flex flex-col">
+        <div className="fixed inset-0 z-50 flex flex-col" style={{ background: 'rgba(0,0,0,0.92)' }}>
           <button
             type="button"
             onClick={() => setPreviewOpen(false)}
-            className="self-end m-4 p-2 text-gray-300"
+            className="self-end m-4 p-2"
+            style={{ color: 'var(--text)' }}
             aria-label="Close preview"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
@@ -321,14 +326,17 @@ export default function PhotoImport({ onImportComplete }) {
 function TextField({ label, value, onChange, placeholder, inputMode }) {
   return (
     <div>
-      <label className="block text-xs text-gray-500 mb-1.5">{label}</label>
+      <label className="block mb-1.5" style={{ fontSize: 11, color: 'var(--text-dim)' }}>{label}</label>
       <input
         type="text"
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         inputMode={inputMode}
-        className="w-full bg-[#0f0f0f] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-sm text-gray-100 placeholder-gray-700 focus:border-violet-500 focus:outline-none"
+        className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+        style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)' }}
+        onFocus={(e) => (e.target.style.borderColor = 'var(--accent)')}
+        onBlur={(e) => (e.target.style.borderColor = 'var(--border)')}
       />
     </div>
   );

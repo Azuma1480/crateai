@@ -1,7 +1,8 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import { searchDiscogs, getRelease } from '../lib/discogs.js';
 import { searchSpotifyTrack } from '../lib/spotify.js';
 import { getSetting, saveAlbum, saveTracks } from '../lib/db.js';
+import { gradientFor } from '../lib/art.js';
 import PhotoImport from './PhotoImport.jsx';
 
 const GENRES = [
@@ -137,65 +138,60 @@ export default function AddRecord({ onImportComplete }) {
     }
   };
 
+  const titleFor = {
+    search: 'Add Record', results: 'Pick Album', tracklist: 'Confirm Tracks',
+    importing: 'Importing…', done: 'Done!',
+  };
+
   return (
-    <div className="flex flex-col h-full">
-      <div className="px-4 pt-4 pb-3 bg-[#0f0f0f] border-b border-[#1a1a1a]">
+    <div className="flex flex-col h-full transition-colors duration-500" style={{ background: 'var(--bg)' }}>
+
+      {/* Header */}
+      <div className="px-4 pt-4 pb-3 flex-shrink-0" style={{ background: 'var(--bg)' }}>
         <div className="flex items-center gap-3">
           {step !== 'search' && step !== 'done' && (
-            <button onClick={reset} className="text-gray-400 p-1">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
-                className="w-5 h-5">
+            <button onClick={reset} className="p-1 -ml-1" style={{ color: 'var(--text-dim)' }} aria-label="Back">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-5 h-5">
                 <polyline points="15 18 9 12 15 6" />
               </svg>
             </button>
           )}
-          <h1 className="text-xl font-bold text-gray-100">
-            {step === 'search' && 'Add Record'}
-            {step === 'results' && 'Pick Album'}
-            {step === 'tracklist' && 'Confirm Tracks'}
-            {step === 'importing' && 'Importing…'}
-            {step === 'done' && 'Done!'}
+          <h1 className="font-bold" style={{ fontSize: 22, color: 'var(--text)', letterSpacing: '-0.02em' }}>
+            {titleFor[step]}
           </h1>
         </div>
       </div>
 
-      <div className="flex-1 scroll-area p-4">
+      <div className="flex-1 scroll-area px-4 pb-6">
         {error && (
-          <div className="mb-4 p-3 bg-red-900/30 border border-red-700 rounded-xl text-sm text-red-300">
+          <div className="mb-4 p-3 rounded-xl text-sm" style={{ background: 'rgba(242,114,107,0.12)', border: '1px solid rgba(242,114,107,0.4)', color: '#f2726b' }}>
             {error}
           </div>
         )}
 
         {/* STEP: Search */}
         {step === 'search' && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-2 bg-[#1a1a1a] rounded-xl p-1">
-              <button
-                type="button"
-                onClick={() => setMode('discogs')}
-                className={`py-2 rounded-lg text-sm font-medium transition-colors ${
-                  mode === 'discogs' ? 'bg-violet-600 text-white' : 'text-gray-500'
-                }`}
-              >
-                Discogs
-              </button>
-              <button
-                type="button"
-                onClick={() => setMode('photo')}
-                className={`py-2 rounded-lg text-sm font-medium transition-colors ${
-                  mode === 'photo' ? 'bg-violet-600 text-white' : 'text-gray-500'
-                }`}
-              >
-                Photo
-              </button>
+          <div className="flex flex-col gap-4">
+            <div className="flex gap-1 rounded-xl p-1" style={{ background: 'var(--surface2)' }}>
+              {[['discogs', 'Discogs'], ['photo', 'Photo']].map(([m, label]) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setMode(m)}
+                  className="flex-1 py-2 rounded-lg text-sm font-semibold transition-all duration-200"
+                  style={{ background: mode === m ? 'var(--accent)' : 'transparent', color: mode === m ? 'var(--bg)' : 'var(--text-dim)' }}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
 
             {mode === 'photo' ? (
               <PhotoImport onImportComplete={onImportComplete} />
             ) : (
-              <form onSubmit={handleSearch} className="space-y-4">
+              <form onSubmit={handleSearch} className="flex flex-col gap-4">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1.5">
+                  <label style={{ fontSize: 11, color: 'var(--text-dim)', display: 'block', marginBottom: 6 }}>
                     Search album or artist
                   </label>
                   <div className="flex gap-2">
@@ -204,26 +200,29 @@ export default function AddRecord({ onImportComplete }) {
                       value={query}
                       onChange={(e) => setQuery(e.target.value)}
                       placeholder="e.g. Marvin Gaye What's Going On"
-                      className="flex-1 bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl px-4 py-3 text-sm text-gray-100 placeholder-gray-600 focus:border-violet-500 focus:outline-none"
+                      className="flex-1 rounded-xl px-4 py-3 text-sm outline-none"
+                      style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)' }}
+                      onFocus={(e) => (e.target.style.borderColor = 'var(--accent)')}
+                      onBlur={(e) => (e.target.style.borderColor = 'var(--border)')}
                       autoFocus
                     />
                     <button
                       type="submit"
                       disabled={searching || !query.trim()}
-                      className="bg-violet-600 text-white px-4 py-3 rounded-xl font-medium text-sm disabled:opacity-50"
+                      className="px-4 py-3 rounded-xl font-semibold text-sm disabled:opacity-50"
+                      style={{ background: 'var(--accent)', color: 'var(--bg)' }}
                     >
                       {searching ? (
-                        <svg className="w-5 h-5 spin" viewBox="0 0 24 24" fill="none"
-                          stroke="currentColor" strokeWidth={2}>
+                        <svg className="w-5 h-5 spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                           <path d="M21 12a9 9 0 1 1-6.219-8.56" />
                         </svg>
                       ) : 'Search'}
                     </button>
                   </div>
                 </div>
-                <div className="mt-6 bg-[#1a1a1a] rounded-xl p-4">
-                  <p className="text-xs text-gray-500 font-medium mb-2">How it works</p>
-                  <ol className="text-xs text-gray-400 space-y-1.5 list-decimal list-inside">
+                <div className="rounded-xl p-4" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                  <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-dim)', marginBottom: 8 }}>How it works</p>
+                  <ol style={{ fontSize: 12, color: 'var(--text-dim)', listStyle: 'decimal inside', lineHeight: 1.9 }}>
                     <li>Search Discogs for the album</li>
                     <li>Pick the correct pressing</li>
                     <li>CrateAI fetches BPM &amp; key from Spotify</li>
@@ -237,37 +236,29 @@ export default function AddRecord({ onImportComplete }) {
 
         {/* STEP: Results */}
         {step === 'results' && (
-          <div className="space-y-2">
+          <div className="flex flex-col gap-2">
             {loadingRelease && (
               <div className="flex items-center justify-center py-12">
-                <svg className="w-8 h-8 spin text-violet-400" viewBox="0 0 24 24"
-                  fill="none" stroke="currentColor" strokeWidth={2}>
+                <svg className="w-8 h-8 spin" style={{ color: 'var(--accent)' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                   <path d="M21 12a9 9 0 1 1-6.219-8.56" />
                 </svg>
               </div>
             )}
             {!loadingRelease && searchResults.length === 0 && (
-              <p className="text-gray-500 text-sm text-center py-8">No results found</p>
+              <p className="text-center py-8" style={{ color: 'var(--text-dim)', fontSize: 13 }}>No results found</p>
             )}
             {!loadingRelease && searchResults.map((r) => (
               <button
                 key={r.id}
                 onClick={() => handlePickRelease(r)}
-                className="w-full text-left bg-[#1a1a1a] rounded-xl p-3 flex gap-3 hover:bg-[#222] active:bg-[#1a1a1a] transition-colors"
+                className="w-full text-left rounded-xl p-3 flex gap-3 transition-colors"
+                style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
               >
-                <div className="w-14 h-14 flex-shrink-0 rounded-lg bg-[#2a2a2a] overflow-hidden">
-                  {r.thumb ? (
-                    <img src={r.thumb} alt={r.title} className="w-full h-full object-cover" />
-                  ) : (
-                    <VinylPlaceholder />
-                  )}
-                </div>
+                <Thumb src={r.thumb} seed={r} size={56} />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-100 line-clamp-2 leading-tight">
-                    {r.title}
-                  </p>
-                  {r.year && <p className="text-xs text-gray-500 mt-0.5">{r.year}</p>}
-                  {r.format && <p className="text-xs text-gray-600 mt-0.5">{r.format}</p>}
+                  <p className="line-clamp-2 font-medium" style={{ fontSize: 14, color: 'var(--text)', lineHeight: 1.3 }}>{r.title}</p>
+                  {r.year && <p style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 2 }}>{r.year}</p>}
+                  {r.format && <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>{r.format}</p>}
                 </div>
               </button>
             ))}
@@ -276,38 +267,24 @@ export default function AddRecord({ onImportComplete }) {
 
         {/* STEP: Tracklist */}
         {step === 'tracklist' && releaseDetail && (
-          <div className="space-y-4">
-            <div className="flex gap-3 bg-[#1a1a1a] rounded-xl p-3">
-              <div className="w-16 h-16 flex-shrink-0 rounded-lg bg-[#2a2a2a] overflow-hidden">
-                {releaseDetail.cover ? (
-                  <img src={releaseDetail.cover} alt={releaseDetail.title}
-                    className="w-full h-full object-cover" />
-                ) : (
-                  <VinylPlaceholder />
-                )}
-              </div>
+          <div className="flex flex-col gap-4">
+            <div className="flex gap-3 rounded-xl p-3" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+              <Thumb src={releaseDetail.cover} seed={releaseDetail} size={64} />
               <div className="min-w-0">
-                <p className="font-semibold text-gray-100 text-sm leading-tight line-clamp-2">
-                  {releaseDetail.title}
-                </p>
-                <p className="text-xs text-gray-400 mt-0.5">{releaseDetail.artist}</p>
-                {releaseDetail.year && (
-                  <p className="text-xs text-gray-500">{releaseDetail.year}</p>
-                )}
-                <p className="text-xs text-gray-500 mt-0.5">
-                  {releaseDetail.tracklist.length} tracks
-                </p>
+                <p className="font-semibold line-clamp-2" style={{ fontSize: 14, color: 'var(--text)', lineHeight: 1.3 }}>{releaseDetail.title}</p>
+                <p style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 2 }}>{releaseDetail.artist}</p>
+                {releaseDetail.year && <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>{releaseDetail.year}</p>}
+                <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{releaseDetail.tracklist.length} tracks</p>
               </div>
             </div>
 
             <div>
-              <label className="block text-xs text-gray-500 mb-1.5">
-                Set genre for all tracks
-              </label>
+              <label style={{ fontSize: 11, color: 'var(--text-dim)', display: 'block', marginBottom: 6 }}>Set genre for all tracks</label>
               <select
                 value={selectedGenre}
                 onChange={(e) => setSelectedGenre(e.target.value)}
-                className="w-full bg-[#1a1a1a] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-sm text-gray-200 focus:border-violet-500 focus:outline-none"
+                className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+                style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)' }}
               >
                 <option value="">— No genre —</option>
                 {GENRES.map((g) => <option key={g} value={g}>{g}</option>)}
@@ -315,24 +292,18 @@ export default function AddRecord({ onImportComplete }) {
             </div>
 
             <div>
-              <p className="text-xs text-gray-500 mb-2">Tracks to import</p>
-              <div className="bg-[#1a1a1a] rounded-xl divide-y divide-[#2a2a2a]">
+              <p style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 8 }}>Tracks to import</p>
+              <div className="rounded-xl overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
                 {releaseDetail.tracklist.map((t, i) => (
-                  <div key={i} className="px-3 py-2 flex gap-2">
-                    <span className="text-xs text-gray-600 w-6 flex-shrink-0 pt-0.5">
-                      {t.position || i + 1}
-                    </span>
+                  <div key={i} className="px-3 py-2 flex gap-2" style={{ borderTop: i === 0 ? 'none' : '1px solid var(--border)' }}>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)', width: 24, flexShrink: 0, paddingTop: 2 }}>{t.position || i + 1}</span>
                     <div className="min-w-0">
-                      <p className="text-sm text-gray-200 truncate">{t.title}</p>
+                      <p className="truncate" style={{ fontSize: 13, color: 'var(--text)' }}>{t.title}</p>
                       {t.artist !== releaseDetail.artist && (
-                        <p className="text-xs text-gray-500 truncate">{t.artist}</p>
+                        <p className="truncate" style={{ fontSize: 11, color: 'var(--text-dim)' }}>{t.artist}</p>
                       )}
                     </div>
-                    {t.duration && (
-                      <span className="ml-auto text-xs text-gray-600 flex-shrink-0 pt-0.5">
-                        {t.duration}
-                      </span>
-                    )}
+                    {t.duration && <span className="ml-auto" style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0, paddingTop: 2 }}>{t.duration}</span>}
                   </div>
                 ))}
               </div>
@@ -340,7 +311,8 @@ export default function AddRecord({ onImportComplete }) {
 
             <button
               onClick={handleImport}
-              className="w-full bg-violet-600 text-white py-3.5 rounded-xl font-semibold text-sm"
+              className="w-full py-3.5 rounded-xl font-semibold text-sm"
+              style={{ background: 'var(--accent)', color: 'var(--bg)' }}
             >
               Import {releaseDetail.tracklist.length} tracks
             </button>
@@ -351,26 +323,22 @@ export default function AddRecord({ onImportComplete }) {
         {step === 'importing' && (
           <div className="flex flex-col items-center justify-center py-16 gap-6">
             <div className="relative w-20 h-20">
-              <svg className="w-20 h-20 spin text-violet-400" viewBox="0 0 24 24"
-                fill="none" stroke="currentColor" strokeWidth={1.5}>
+              <svg className="w-20 h-20 spin" style={{ color: 'var(--accent)' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
                 <path d="M21 12a9 9 0 1 1-6.219-8.56" />
               </svg>
               <div className="absolute inset-0 flex items-center justify-center">
-                <span className="text-sm font-mono text-violet-300">
+                <span style={{ fontFamily: 'monospace', fontSize: 13, color: 'var(--accent)' }}>
                   {importProgress.done}/{importProgress.total}
                 </span>
               </div>
             </div>
             <div className="text-center">
-              <p className="text-gray-300 font-medium">Fetching BPM &amp; key</p>
-              <p className="text-gray-500 text-sm mt-1">Searching Spotify for each track&hellip;</p>
+              <p style={{ color: 'var(--text)', fontWeight: 500 }}>Fetching BPM &amp; key</p>
+              <p style={{ color: 'var(--text-dim)', fontSize: 13, marginTop: 4 }}>Searching Spotify for each track…</p>
             </div>
             {importProgress.total > 0 && (
-              <div className="w-full bg-[#1a1a1a] rounded-full h-1.5">
-                <div
-                  className="bg-violet-500 h-1.5 rounded-full transition-all"
-                  style={{ width: `${(importProgress.done / importProgress.total) * 100}%` }}
-                />
+              <div className="w-full rounded-full h-1.5" style={{ background: 'var(--surface2)' }}>
+                <div className="h-1.5 rounded-full transition-all" style={{ width: `${(importProgress.done / importProgress.total) * 100}%`, background: 'var(--accent)' }} />
               </div>
             )}
           </div>
@@ -379,22 +347,18 @@ export default function AddRecord({ onImportComplete }) {
         {/* STEP: Done */}
         {step === 'done' && (
           <div className="flex flex-col items-center justify-center py-16 gap-6 text-center">
-            <div className="w-20 h-20 rounded-full bg-violet-900/40 flex items-center justify-center">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
-                className="w-10 h-10 text-violet-400">
+            <div className="w-20 h-20 rounded-full flex items-center justify-center" style={{ background: 'var(--accent-dim)' }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-10 h-10" style={{ color: 'var(--accent)' }}>
                 <polyline points="20 6 9 17 4 12" />
               </svg>
             </div>
             <div>
-              <p className="text-xl font-bold text-gray-100">Added to crate!</p>
-              <p className="text-gray-500 text-sm mt-1">
+              <p className="font-bold" style={{ fontSize: 20, color: 'var(--text)' }}>Added to crate!</p>
+              <p style={{ color: 'var(--text-dim)', fontSize: 13, marginTop: 4 }}>
                 {releaseDetail?.tracklist?.length} tracks from {releaseDetail?.title}
               </p>
             </div>
-            <button
-              onClick={reset}
-              className="bg-violet-600 text-white px-8 py-3 rounded-xl font-medium"
-            >
+            <button onClick={reset} className="px-8 py-3 rounded-xl font-medium" style={{ background: 'var(--accent)', color: 'var(--bg)' }}>
               Add another
             </button>
           </div>
@@ -404,15 +368,13 @@ export default function AddRecord({ onImportComplete }) {
   );
 }
 
-function VinylPlaceholder() {
+function Thumb({ src, seed, size }) {
   return (
-    <div className="w-full h-full flex items-center justify-center bg-[#2a2a2a]">
-      <svg viewBox="0 0 24 24" className="w-8 h-8 text-gray-600" fill="currentColor">
-        <circle cx="12" cy="12" r="10" opacity="0.3" />
-        <circle cx="12" cy="12" r="4" opacity="0.5" />
-        <circle cx="12" cy="12" r="1.5" />
-      </svg>
+    <div
+      className="flex-shrink-0 rounded-lg overflow-hidden flex items-center justify-center"
+      style={{ width: size, height: size, background: src ? 'var(--surface2)' : gradientFor(seed || {}) }}
+    >
+      {src ? <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : null}
     </div>
   );
 }
-

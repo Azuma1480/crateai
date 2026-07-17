@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import NavBar from './components/NavBar.jsx';
 import Library from './components/Library.jsx';
 import LiveMode from './components/LiveMode.jsx';
+import AddRecord from './components/AddRecord.jsx';
 import Settings from './components/Settings.jsx';
 import SpeedStreaks from './components/SpeedStreaks.jsx';
 import { getSetting, setSetting } from './lib/db.js';
@@ -59,7 +60,11 @@ export default function App() {
             keyFormat={keyFormat}
             nowPlaying={nowPlaying}
             setNowPlaying={(t) => { setNowPlaying(t); setActiveTab('live'); }}
+            onAddRecord={() => setActiveTab('add')}
           />
+        )}
+        {activeTab === 'add' && (
+          <AddRecord onImportComplete={bumpLibrary} />
         )}
         {activeTab === 'live' && (
           <LiveMode

@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getAllTracks, updateTrackGenre } from '../lib/db.js';
 import { toCamelot, keyName } from '../lib/camelot.js';
+import { gradientFor } from '../lib/art.js';
 
 const GENRES = [
   'All', 'R&B', 'Korean Indie', 'Japanese City Pop', 'Funk', 'Hip-Hop',
   'Pop', 'Jazz', 'Disco', 'House', 'Lo-fi Hip-Hop',
 ];
 
-export default function Library({ libraryVersion, setNowPlaying, keyFormat = 'camelot', nowPlaying }) {
+export default function Library({ libraryVersion, setNowPlaying, keyFormat = 'camelot', nowPlaying, onAddRecord }) {
   const [tracks, setTracks] = useState([]);
   const [query, setQuery] = useState('');
   const [genre, setGenre] = useState('All');
@@ -53,9 +54,23 @@ export default function Library({ libraryVersion, setNowPlaying, keyFormat = 'ca
 
       {/* Header */}
       <div className="px-4 pt-4 pb-2 flex-shrink-0" style={{ background: 'var(--bg)' }}>
-        <h1 className="font-bold" style={{ fontSize: 22, color: 'var(--text)', letterSpacing: '-0.02em', marginBottom: 12 }}>
-          Library
-        </h1>
+        <div className="flex items-center justify-between" style={{ marginBottom: 12 }}>
+          <h1 className="font-bold" style={{ fontSize: 22, color: 'var(--text)', letterSpacing: '-0.02em' }}>
+            Library
+          </h1>
+          {onAddRecord && (
+            <button
+              onClick={onAddRecord}
+              className="flex items-center gap-1.5 rounded-full px-3 py-1.5 font-semibold"
+              style={{ background: 'var(--accent-dim)', border: '1px solid var(--accent)', color: 'var(--accent)', fontSize: 12 }}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} style={{ width: 13, height: 13 }}>
+                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              登録
+            </button>
+          )}
+        </div>
 
         {/* Search */}
         <div className="relative mb-2">
@@ -112,7 +127,7 @@ export default function Library({ libraryVersion, setNowPlaying, keyFormat = 'ca
       {/* List */}
       <div className="flex-1 scroll-area pt-1 pb-4">
         {!loading && filtered.length === 0 && (
-          <EmptyState query={query} genre={genre} total={tracks.length} />
+          <EmptyState query={query} genre={genre} total={tracks.length} onAddRecord={onAddRecord} />
         )}
         {filtered.map((track) => {
           const isPlaying = nowPlaying?.id === track.id;
@@ -136,16 +151,10 @@ export default function Library({ libraryVersion, setNowPlaying, keyFormat = 'ca
                 {/* Art */}
                 <div
                   className="flex-shrink-0 rounded-lg overflow-hidden flex items-center justify-center"
-                  style={{ width: 44, height: 44, background: 'var(--surface2)', border: '1px solid var(--border)' }}
+                  style={{ width: 44, height: 44, background: track.cover ? 'var(--surface2)' : gradientFor(track), border: '1px solid var(--border)' }}
                 >
-                  {track.cover ? (
+                  {track.cover && (
                     <img src={track.cover} alt={track.album} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  ) : (
-                    <svg viewBox="0 0 24 24" style={{ width: 22, height: 22, color: 'var(--text-muted)' }} fill="currentColor">
-                      <circle cx="12" cy="12" r="10" opacity="0.3" />
-                      <circle cx="12" cy="12" r="4" opacity="0.5" />
-                      <circle cx="12" cy="12" r="1.5" />
-                    </svg>
                   )}
                 </div>
 
@@ -221,10 +230,10 @@ export default function Library({ libraryVersion, setNowPlaying, keyFormat = 'ca
   );
 }
 
-function EmptyState({ query, genre, total }) {
+function EmptyState({ query, genre, total, onAddRecord }) {
   if (total === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-48 text-center px-6">
+      <div className="flex flex-col items-center justify-center h-64 text-center px-6">
         <div
           className="w-16 h-16 rounded-full flex items-center justify-center mb-4"
           style={{ background: 'var(--surface)' }}
@@ -237,8 +246,20 @@ function EmptyState({ query, genre, total }) {
         </div>
         <p style={{ color: 'var(--text-dim)', fontWeight: 500 }}>Your crate is empty</p>
         <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 4 }}>
-          Import records via Settings → Import Library
+          レコードを登録してクレートを作ろう
         </p>
+        {onAddRecord && (
+          <button
+            onClick={onAddRecord}
+            className="mt-5 flex items-center gap-2 rounded-xl px-5 py-2.5 font-semibold"
+            style={{ background: 'var(--accent)', color: 'var(--bg)', fontSize: 14 }}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} style={{ width: 16, height: 16 }}>
+              <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            レコードを登録
+          </button>
+        )}
       </div>
     );
   }

@@ -1,16 +1,21 @@
 // Discogs API client
 // Docs: https://www.discogs.com/developers/
 // Auth: Personal Access Token in Authorization header
+//
+// The Discogs API does not send CORS headers, so browser-direct requests fail
+// in a PWA. When a proxy URL is configured in Settings (e.g. a tiny server on
+// the user's desktop — see tools/discogs-proxy.mjs), requests are routed
+// through it: <proxy>/<path> → https://api.discogs.com/<path>.
+
+import { getSetting } from './db.js';
 
 const BASE = 'https://api.discogs.com';
-const UA = 'CrateAI/1.0 +https://github.com/crate-ai';
 
 async function discogsGet(path, token) {
-  const res = await fetch(`${BASE}${path}`, {
-    headers: {
-      Authorization: `Discogs token=${token}`,
-      'User-Agent': UA,
-    },
+  const proxy = (await getSetting('discogsProxy'))?.trim()?.replace(/\/+$/, '');
+  const url = proxy ? `${proxy}${path}` : `${BASE}${path}`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Discogs token=${token}` },
   });
   if (!res.ok) {
     const text = await res.text();

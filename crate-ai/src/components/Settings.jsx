@@ -11,6 +11,7 @@ const API_GROUPS = [
     hint: 'discogs.com/settings/developers',
     fields: [
       { key: 'discogsToken', label: 'Personal Access Token', type: 'password', placeholder: 'your discogs token' },
+      { key: 'discogsProxy', label: 'Proxy URL（CORS回避・デスクトップで tools/discogs-proxy.mjs を起動）', type: 'text', placeholder: 'http://192.168.x.x:8722' },
     ],
     test: async (vals) => {
       if (!vals.discogsToken) throw new Error('Token required');
@@ -174,8 +175,17 @@ export default function Settings({
               ))}
             </div>
           </Row>
-          <Row label="Include Played Tracks" sub="Show recently played records in suggestions" last>
+          <Row label="Include Played Tracks" sub="Show recently played records in suggestions">
             <Toggle on={includePlayed} onToggle={() => setIncludePlayed(!includePlayed)} />
+          </Row>
+          <Row label="プレイ履歴" sub="新しいセットを始めるときにリセット" last>
+            <button
+              onClick={async () => { await setSetting('playHistory', '[]'); setSaveMsg('履歴をリセットしました'); setTimeout(() => setSaveMsg(''), 2000); }}
+              className="rounded-lg px-3 py-1.5 text-xs font-semibold"
+              style={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text-dim)' }}
+            >
+              リセット
+            </button>
           </Row>
         </Section>
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { getAllTracks } from '../lib/db.js';
+import { getAllTracks, getSetting, setSetting } from '../lib/db.js';
 import { getSuggestions } from '../lib/suggestions.js';
 import { toCamelot, keyName } from '../lib/camelot.js';
 import { pitchPercent, shiftKeyByPitch, camelotDelta } from '../lib/kam.js';
@@ -20,6 +20,21 @@ export default function LiveMode({
   const [searchResults, setSearchResults] = useState([]);
   const [playHistory, setPlayHistory] = useState(new Set());
   const searchRef = useRef(null);
+
+  // Persist play history across reloads (one live set = one night; the
+  // history survives accidental refreshes mid-set).
+  useEffect(() => {
+    getSetting('playHistory').then((v) => {
+      if (v) { try { setPlayHistory(new Set(JSON.parse(v))); } catch { /* corrupt -> fresh */ } }
+    });
+  }, []);
+  const markPlayed = (trackId) => {
+    setPlayHistory((h) => {
+      const next = new Set([...h, trackId]);
+      setSetting('playHistory', JSON.stringify([...next]));
+      return next;
+    });
+  };
 
   const loadLibrary = useCallback(async () => {
     setLibrary(await getAllTracks());
@@ -47,14 +62,14 @@ export default function LiveMode({
   }, [searchQuery, library]);
 
   const handleSelectNowPlaying = (track) => {
-    if (nowPlaying) setPlayHistory((h) => new Set([...h, nowPlaying.id]));
+    if (nowPlaying) markPlayed(nowPlaying.id);
     setNowPlaying(track);
     setShowSearch(false);
     setSearchQuery('');
   };
 
   const handleSelectSuggestion = (track) => {
-    if (nowPlaying) setPlayHistory((h) => new Set([...h, nowPlaying.id]));
+    if (nowPlaying) markPlayed(nowPlaying.id);
     setNowPlaying(track);
   };
 

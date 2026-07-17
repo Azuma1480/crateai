@@ -63,28 +63,30 @@ export default function LiveMode({
     return keyFormat === 'camelot' ? cam : (keyName(spotifyKey, mode) ?? cam);
   };
 
+  // Build the current → suggestion transition (BPM + key), with signed deltas.
   const buildDeltaRow = (sug) => {
     const np = nowPlaying;
     if (!np?.bpm || !sug.bpm) return null;
     const pitch = pitchPercent(np.bpm, sug.bpm);
-    const pitchedBpm = Math.round(np.bpm * (1 + pitch / 100));
-    const bpmDelta = pitchedBpm - np.bpm;
-    const sign = bpmDelta >= 0 ? '+' : '';
+    const bpmFrom = np.bpm;
+    const bpmTo = Math.round(sug.bpm);
+    const bpmDelta = bpmTo - bpmFrom;
+
     const npCam = np.camelotKey ?? toCamelot(np.key, np.mode);
     const sugCam = sug.camelotKey ?? toCamelot(sug.key, sug.mode);
-    let fromKeyDisplay, toKeyDisplay, keyDeltaDisplay;
+
+    let fromCam = npCam;
+    let fromKey;
     if (kamOn && npCam) {
-      const shiftedCam = shiftKeyByPitch(npCam, pitch);
-      fromKeyDisplay = keyFormat === 'camelot' ? shiftedCam : (keyName(np.key, np.mode) ?? shiftedCam);
-      toKeyDisplay   = keyFormat === 'camelot' ? sugCam     : (keyName(sug.key, sug.mode) ?? sugCam);
-      const delta = camelotDelta(shiftedCam, sugCam);
-      keyDeltaDisplay = delta === 0 ? '±0' : (delta > 0 ? `+${delta}` : `${delta}`);
+      fromCam = shiftKeyByPitch(npCam, pitch);
+      fromKey = keyFormat === 'camelot' ? fromCam : (keyName(np.key, np.mode) ?? fromCam);
     } else {
-      fromKeyDisplay = displayKey(npCam, np.key, np.mode);
-      toKeyDisplay   = displayKey(sugCam, sug.key, sug.mode);
-      keyDeltaDisplay = null;
+      fromKey = displayKey(npCam, np.key, np.mode);
     }
-    return { bpmFrom: np.bpm, bpmTo: pitchedBpm, bpmDelta: `${sign}${bpmDelta}`, fromKey: fromKeyDisplay, toKey: toKeyDisplay, keyDelta: keyDeltaDisplay };
+    const toKey = displayKey(sugCam, sug.key, sug.mode);
+    const keyDelta = (fromCam && sugCam) ? camelotDelta(fromCam, sugCam) : null;
+
+    return { bpmFrom, bpmTo, bpmDelta, fromKey, toKey, keyDelta };
   };
 
   const npCam = nowPlaying ? (nowPlaying.camelotKey ?? toCamelot(nowPlaying.key, nowPlaying.mode)) : null;
@@ -93,118 +95,116 @@ export default function LiveMode({
   return (
     <div className="flex flex-col h-full overflow-hidden" style={{ background: 'var(--bg)' }}>
 
-      {/* ── TURNTABLE VISUAL ─────────────────────────────────────────────────── */}
-      <TurntableStage kamOn={kamOn} />
+      {/* ── TURNTABLE + NOW PLAYING (fixed frame — confirmed layout) ──────────── */}
+      <div
+        className="flex-shrink-0 relative overflow-hidden"
+        style={{
+          height: 219,
+          background: 'radial-gradient(ellipse at 20% 80%, #1c1206 0%, #0a0704 55%, #050302 100%)',
+        }}
+      >
+        <TurntableCanvas nowPlaying={nowPlaying} />
+        {/* fade into content */}
+        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 70, background: 'linear-gradient(to bottom, transparent, var(--bg) 92%)', pointerEvents: 'none', zIndex: 7 }} />
 
-      {/* ── NOW PLAYING ──────────────────────────────────────────────────────── */}
-      <div className="flex-shrink-0 px-4 pb-3">
-        <p style={{ fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-dim)' }}>
-          Now Playing
-        </p>
+        {/* now-playing: left = song/artist/album, right corner = BPM/key */}
         {nowPlaying ? (
-          <div className="flex items-start gap-3 mt-1.5">
-            <ArtThumb track={nowPlaying} size={48} />
-            <div className="flex-1 min-w-0">
-              <p className="font-semibold truncate" style={{ fontSize: 16, color: 'var(--text)', lineHeight: 1.2 }}>
-                {nowPlaying.title}
-              </p>
-              <p style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 2 }}>
-                {nowPlaying.artist}{nowPlaying.genre ? ` · ${nowPlaying.genre}` : ''}
-              </p>
-              <div className="flex items-center gap-2 mt-1.5">
-                {nowPlaying.bpm && (
-                  <span style={{ fontFamily: 'monospace', fontSize: 13, color: 'var(--accent)', fontVariantNumeric: 'tabular-nums' }}>
-                    {nowPlaying.bpm} BPM
-                  </span>
-                )}
-                {npKeyDisplay && (
-                  <>
-                    <span style={{ width: 1, height: 12, background: 'var(--border)', display: 'inline-block' }} />
-                    <span style={{ fontFamily: 'monospace', fontSize: 13, color: 'var(--accent)' }}>{npKeyDisplay}</span>
-                  </>
-                )}
-              </div>
+          <div style={{ position: 'absolute', left: 20, right: 16, top: 138, zIndex: 9, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }}>
+            <div style={{ position: 'relative', minWidth: 0, flex: 1 }}>
+              <div style={{ position: 'absolute', left: -20, right: -30, top: -28, bottom: -18, background: 'radial-gradient(ellipse at 30% 55%, rgba(6,4,3,0.62) 0%, rgba(6,4,3,0.28) 55%, rgba(6,4,3,0) 80%)', zIndex: -1 }} />
+              <p style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--accent)', marginBottom: 4, textShadow: '0 1px 5px rgba(0,0,0,0.9)' }}>Now Playing</p>
+              <p className="truncate" style={{ fontSize: 22, fontWeight: 700, color: '#fbeecb', letterSpacing: '-0.02em', lineHeight: 1.04, textShadow: '0 2px 8px rgba(0,0,0,0.95)' }}>{nowPlaying.title}</p>
+              <p className="truncate" style={{ fontSize: 13, color: 'rgba(235,205,140,0.92)', marginTop: 3, textShadow: '0 1px 6px rgba(0,0,0,0.9)' }}>{nowPlaying.artist}</p>
+              {(nowPlaying.album || nowPlaying.year) && (
+                <p className="truncate" style={{ fontSize: 11, color: 'rgba(210,175,115,0.6)', marginTop: 2, textShadow: '0 1px 6px rgba(0,0,0,0.9)' }}>
+                  {[nowPlaying.album, nowPlaying.year].filter(Boolean).join(' · ')}
+                </p>
+              )}
             </div>
-            <button onClick={() => setNowPlaying(null)} style={{ color: 'var(--text-muted)', fontSize: 11, flexShrink: 0, paddingTop: 2 }}>✕</button>
+            <div style={{ textAlign: 'right', flexShrink: 0 }}>
+              {nowPlaying.bpm && (
+                <div style={{ fontSize: 27, fontWeight: 800, color: 'var(--accent)', letterSpacing: '-0.05em', lineHeight: 1, fontVariantNumeric: 'tabular-nums', textShadow: '0 2px 8px rgba(0,0,0,0.8)' }}>
+                  {nowPlaying.bpm}<span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-dim)', marginLeft: 2 }}> BPM</span>
+                </div>
+              )}
+              {npKeyDisplay && (
+                <div style={{ display: 'flex', gap: 6, marginTop: 8, justifyContent: 'flex-end' }}>
+                  <span style={{ background: 'var(--accent-dim)', border: '1px solid var(--accent)', borderRadius: 6, padding: '3px 9px', fontSize: 11, fontWeight: 700, color: 'var(--accent)', textShadow: '0 1px 4px rgba(0,0,0,0.6)' }}>{npKeyDisplay}</span>
+                </div>
+              )}
+            </div>
           </div>
         ) : (
-          <p style={{ fontSize: 13, color: 'var(--text-dim)', marginTop: 6 }}>
-            ライブラリから曲を選んでスタート
-          </p>
+          <div style={{ position: 'absolute', left: 20, right: 16, top: 150, zIndex: 9 }}>
+            <p style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--accent)', marginBottom: 4 }}>Now Playing</p>
+            <p style={{ fontSize: 15, color: '#fbeecb', textShadow: '0 2px 8px rgba(0,0,0,0.9)' }}>ライブラリから曲を選んでスタート</p>
+          </div>
         )}
+      </div>
+
+      {/* ── KAM / X2 CONTROLS ───────────────────────────────────────────────── */}
+      <div className="flex gap-2 px-5 pt-3 pb-2 flex-shrink-0">
+        <ToggleCard name="KAM" sub="Key Adapt Mode" on={kamOn} onToggle={() => setKamOn(!kamOn)} />
+        <ToggleCard name="X2 Range" sub="±16% BPM" on={x2On} onToggle={() => setX2On(!x2On)} />
+      </div>
+
+      {/* ── SUGGEST HEADER (+ search affordance) ─────────────────────────────── */}
+      <div className="flex items-center justify-between px-5 pb-1.5 flex-shrink-0">
+        <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--text-dim)' }}>
+          Next Suggestions
+        </span>
         <button
           onClick={() => { setShowSearch((v) => !v); setTimeout(() => searchRef.current?.focus(), 50); }}
-          className="flex items-center gap-1.5 mt-2"
-          style={{ fontSize: 12, color: 'var(--accent)' }}
+          className="flex items-center gap-1.5"
+          style={{ fontSize: 11, color: 'var(--accent)' }}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} style={{ width: 13, height: 13 }}>
             <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
           </svg>
           {nowPlaying ? '曲を変える' : 'ライブラリを検索'}
         </button>
+      </div>
 
-        {showSearch && (
-          <div className="mt-2 rounded-2xl overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
-            <div className="flex gap-2 p-2">
-              <input
-                ref={searchRef}
-                type="search"
-                placeholder="検索…"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="flex-1 rounded-xl px-3 py-2 text-sm outline-none"
-                style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)' }}
-              />
-              <button onClick={() => { setShowSearch(false); setSearchQuery(''); }} style={{ color: 'var(--text-dim)', fontSize: 12 }}>
-                キャンセル
-              </button>
-            </div>
-            <div style={{ maxHeight: 200, overflowY: 'auto' }}>
-              {searchQuery.length >= 2 && searchResults.length === 0 && (
-                <p className="px-4 py-3" style={{ fontSize: 13, color: 'var(--text-dim)' }}>見つからない</p>
-              )}
-              {searchResults.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => handleSelectNowPlaying(t)}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 text-left"
-                  style={{ borderTop: '1px solid var(--border)' }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface2)')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                >
-                  <ArtThumb track={t} size={36} />
-                  <div className="flex-1 min-w-0">
-                    <p className="truncate" style={{ fontSize: 13, color: 'var(--text)', fontWeight: 500 }}>{t.title}</p>
-                    <p className="truncate" style={{ fontSize: 11, color: 'var(--text-dim)' }}>{t.artist}</p>
-                  </div>
-                  {t.bpm && <span style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--text-dim)', flexShrink: 0 }}>{t.bpm}</span>}
-                </button>
-              ))}
-            </div>
+      {/* ── SEARCH PANEL ─────────────────────────────────────────────────────── */}
+      {showSearch && (
+        <div className="mx-4 mb-2 rounded-2xl overflow-hidden flex-shrink-0" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+          <div className="flex gap-2 p-2">
+            <input
+              ref={searchRef}
+              type="search"
+              placeholder="検索…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="flex-1 rounded-xl px-3 py-2 text-sm outline-none"
+              style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)' }}
+            />
+            <button onClick={() => { setShowSearch(false); setSearchQuery(''); }} style={{ color: 'var(--text-dim)', fontSize: 12 }}>キャンセル</button>
           </div>
-        )}
-      </div>
-
-      {/* ── KAM / X2 CONTROLS ───────────────────────────────────────────────── */}
-      <div className="flex gap-2 px-4 pb-3 flex-shrink-0">
-        <ToggleCard name="KAM" sub="Key Adaptation" on={kamOn} onToggle={() => setKamOn(!kamOn)} />
-        <ToggleCard name="X2"  sub="±16% BPM Range" on={x2On}  onToggle={() => setX2On(!x2On)} />
-      </div>
-
-      {/* ── SUGGEST HEADER ──────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between px-4 pb-2 flex-shrink-0">
-        <span style={{ fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-dim)' }}>
-          Suggestions
-        </span>
-        {nowPlaying && (
-          <span style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--text-muted)' }}>
-            {suggestions.length} tracks
-          </span>
-        )}
-      </div>
+          <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+            {searchQuery.length >= 2 && searchResults.length === 0 && (
+              <p className="px-4 py-3" style={{ fontSize: 13, color: 'var(--text-dim)' }}>見つからない</p>
+            )}
+            {searchResults.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => handleSelectNowPlaying(t)}
+                className="w-full flex items-center gap-3 px-3 py-2.5 text-left"
+                style={{ borderTop: '1px solid var(--border)' }}
+              >
+                <ArtThumb track={t} size={36} />
+                <div className="flex-1 min-w-0">
+                  <p className="truncate" style={{ fontSize: 13, color: 'var(--text)', fontWeight: 500 }}>{t.title}</p>
+                  <p className="truncate" style={{ fontSize: 11, color: 'var(--text-dim)' }}>{t.artist}</p>
+                </div>
+                {t.bpm && <span style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--text-dim)', flexShrink: 0 }}>{t.bpm}</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── SUGGEST LIST ────────────────────────────────────────────────────── */}
-      <div className="flex-1 scroll-area px-3 pb-3 flex flex-col gap-0.5">
+      <div className="flex-1 scroll-area">
         {!nowPlaying && (
           <p className="text-center py-8" style={{ fontSize: 13, color: 'var(--text-dim)' }}>
             曲をセットするとサジェストが表示される
@@ -224,8 +224,9 @@ export default function LiveMode({
           <SuggestItem
             key={sug.id}
             track={sug}
+            rank={i + 1}
             delta={buildDeltaRow(sug)}
-            top={i < 3}
+            top={i === 0}
             onSelect={handleSelectSuggestion}
           />
         ))}
@@ -234,331 +235,218 @@ export default function LiveMode({
   );
 }
 
-/* ── TURNTABLE STAGE ────────────────────────────────────────────────────────── */
+/* ── TURNTABLE CANVAS ───────────────────────────────────────────────────────── */
 
-function TurntableStage({ kamOn }) {
-  const platterRef = useRef(null);
-  const vinylRef   = useRef(null);
-  const rotRef     = useRef(0);
-  const rafRef     = useRef(null);
+function TurntableCanvas({ nowPlaying }) {
+  const canvasRef = useRef(null);
+  const artRef = useRef(null);     // { placeholder: canvas, img: HTMLImageElement|null }
+  const rafRef = useRef(null);
 
-  // Draw platter (wood grain, top-down)
+  // Build / refresh the center-label artwork whenever the track changes.
   useEffect(() => {
-    const canvas = platterRef.current;
+    const placeholder = buildAlbumArt(320, nowPlaying);
+    artRef.current = { placeholder, img: null };
+    if (nowPlaying?.cover) {
+      const img = new Image();
+      img.onload = () => { if (artRef.current) artRef.current.img = img; };
+      img.src = nowPlaying.cover;
+    }
+  }, [nowPlaying?.id, nowPlaying?.cover]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
     if (!canvas) return;
-    const size = canvas.width;
     const ctx = canvas.getContext('2d');
-    const cx = size / 2, cy = size / 2, R = size / 2 - 1;
+    const W = canvas.width, H = canvas.height;
 
-    ctx.clearRect(0, 0, size, size);
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(cx, cy, R, 0, Math.PI * 2);
-    ctx.clip();
+    // Record placement (top-down, top-right quarter at lower-left) — matches mock
+    const cx = W * 0.15, cy = H * 0.78;
+    const VR = 660, LR = 168;
 
-    // Base wood tone — warm browns for Retro, cool dark for Modern
-    const isDark = kamOn;
-    const woodBase  = isDark ? '#0c1a28' : '#2a1a0c';
-    const woodLight = isDark ? '#14263a' : '#3d2a14';
-    const woodDark  = isDark ? '#081018' : '#1c1008';
-
-    ctx.fillStyle = woodBase;
-    ctx.fillRect(0, 0, size, size);
-
-    // Radial wood grain lines (looking down at a cross-cut surface)
-    for (let i = 0; i < 36; i++) {
-      const angle = (i / 36) * Math.PI * 2;
-      const r0 = R * 0.06;
-      const grad = ctx.createLinearGradient(
-        cx + Math.cos(angle) * r0, cy + Math.sin(angle) * r0,
-        cx + Math.cos(angle) * R,  cy + Math.sin(angle) * R
-      );
-      grad.addColorStop(0, 'transparent');
-      grad.addColorStop(0.3 + Math.random() * 0.2, woodLight + '55');
-      grad.addColorStop(0.6 + Math.random() * 0.2, woodDark + '44');
-      grad.addColorStop(1, 'transparent');
-      ctx.strokeStyle = grad;
-      ctx.lineWidth = 2 + Math.random() * 3;
-      ctx.beginPath();
-      ctx.moveTo(cx + Math.cos(angle) * r0, cy + Math.sin(angle) * r0);
-      ctx.lineTo(cx + Math.cos(angle) * R,  cy + Math.sin(angle) * R);
-      ctx.stroke();
-    }
-
-    // Annual rings (concentric, subtle)
-    const ringCount = 22;
-    for (let i = 1; i <= ringCount; i++) {
-      const r = R * 0.08 + (R * 0.88) * (i / ringCount);
-      const alpha = 0.04 + (i % 3 === 0 ? 0.06 : 0.02);
-      ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
-      ctx.lineWidth = i % 4 === 0 ? 1.5 : 0.8;
-      ctx.beginPath();
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-
-    // Rim highlight
-    const rimGrad = ctx.createRadialGradient(cx, cy, R - 8, cx, cy, R);
-    rimGrad.addColorStop(0, 'transparent');
-    rimGrad.addColorStop(1, 'rgba(255,255,255,0.12)');
-    ctx.fillStyle = rimGrad;
-    ctx.fillRect(0, 0, size, size);
-
-    // Center spindle
-    ctx.beginPath();
-    ctx.arc(cx, cy, R * 0.032, 0, Math.PI * 2);
-    ctx.fillStyle = isDark ? '#334' : '#554433';
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    ctx.restore();
-
-    // Outer edge shadow
-    const edgeGrad = ctx.createRadialGradient(cx, cy, R - 6, cx, cy, R + 1);
-    edgeGrad.addColorStop(0, 'transparent');
-    edgeGrad.addColorStop(1, 'rgba(0,0,0,0.9)');
-    ctx.fillStyle = edgeGrad;
-    ctx.beginPath();
-    ctx.arc(cx, cy, R + 1, 0, Math.PI * 2);
-    ctx.fill();
-  }, [kamOn]);
-
-  // Draw vinyl record (static, will be rotated via CSS)
-  useEffect(() => {
-    const canvas = vinylRef.current;
-    if (!canvas) return;
-    const size = canvas.width;
-    const ctx = canvas.getContext('2d');
-    const cx = size / 2, cy = size / 2;
-    const R = size / 2 - 2;
-    const labelR = R * 0.27;
-    const leadInR = R * 0.94;
-    const leadOutR = labelR + R * 0.04;
-
-    ctx.clearRect(0, 0, size, size);
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(cx, cy, R, 0, Math.PI * 2);
-    ctx.clip();
-
-    // Base — very dark vinyl color
-    ctx.fillStyle = '#080808';
-    ctx.fillRect(0, 0, size, size);
-
-    // Groove area: concentric rings simulating pressed grooves
-    const grooveCount = 120;
-    for (let i = 0; i < grooveCount; i++) {
-      const t = i / grooveCount;
-      const r = leadOutR + (leadInR - leadOutR) * t;
-      // Grooves catch light subtly — every few rings is slightly brighter
-      const isHighlight = i % 5 === 0;
-      const alpha = isHighlight ? 0.055 : 0.022;
-      ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
-      ctx.lineWidth = isHighlight ? 0.7 : 0.4;
-      ctx.beginPath();
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-
-    // Lead-in groove (outer edge, slightly visible ring)
-    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    ctx.arc(cx, cy, leadInR + 2, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // Label
-    ctx.beginPath();
-    ctx.arc(cx, cy, labelR, 0, Math.PI * 2);
-    ctx.fillStyle = '#0d0a06';
-    ctx.fill();
-    // Label ring
-    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    // Label text — CRATE AI
-    const accentHex = '#e8a030';
-    ctx.fillStyle = accentHex;
-    ctx.font = `bold ${Math.round(labelR * 0.22)}px monospace`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillText('CRATE', cx, cy - labelR * 0.06);
-    ctx.font = `${Math.round(labelR * 0.15)}px monospace`;
-    ctx.fillStyle = 'rgba(232,160,48,0.5)';
-    ctx.fillText('AI', cx, cy + labelR * 0.3);
-
-    // Label center line decoration
-    ctx.strokeStyle = 'rgba(232,160,48,0.2)';
-    ctx.lineWidth = 0.5;
-    ctx.beginPath();
-    ctx.moveTo(cx - labelR * 0.5, cy + labelR * 0.08);
-    ctx.lineTo(cx + labelR * 0.5, cy + labelR * 0.08);
-    ctx.stroke();
-
-    // Center hole
-    ctx.beginPath();
-    ctx.arc(cx, cy, R * 0.022, 0, Math.PI * 2);
-    ctx.fillStyle = '#000';
-    ctx.fill();
-
-    ctx.restore();
-
-    // Outer edge
-    ctx.strokeStyle = 'rgba(255,255,255,0.04)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.arc(cx, cy, R - 0.5, 0, Math.PI * 2);
-    ctx.stroke();
-  }, []);
-
-  // Rotation animation via requestAnimationFrame (CSS animation was inconsistent cross-browser)
-  useEffect(() => {
-    const vinylEl = vinylRef.current;
-    if (!vinylEl) return;
+    let angle = 0;
+    const RAD_MS = (45 / 60) * (Math.PI * 2) / 1000; // 45 RPM
     let last = null;
-    const RPM = 33.33;
-    const DEG_PER_MS = (RPM * 360) / 60000;
 
-    const tick = (ts) => {
-      if (last !== null) rotRef.current += DEG_PER_MS * (ts - last);
-      last = ts;
-      vinylEl.style.transform = `rotate(${rotRef.current}deg)`;
-      rafRef.current = requestAnimationFrame(tick);
+    const grainCv = document.createElement('canvas');
+    grainCv.width = 120; grainCv.height = 66;
+    const gctx = grainCv.getContext('2d');
+    const gdata = gctx.createImageData(120, 66);
+
+    const drawGrain = () => {
+      for (let i = 0; i < gdata.data.length; i += 4) {
+        const v = 128 + (Math.random() - 0.5) * 40;
+        gdata.data[i] = v; gdata.data[i + 1] = v; gdata.data[i + 2] = v; gdata.data[i + 3] = 12;
+      }
+      gctx.putImageData(gdata, 0, 0);
+      ctx.save();
+      ctx.globalCompositeOperation = 'overlay';
+      ctx.globalAlpha = 0.45;
+      ctx.drawImage(grainCv, 0, 0, W, H);
+      ctx.restore();
     };
-    rafRef.current = requestAnimationFrame(tick);
+
+    const drawVinyl = (a) => {
+      ctx.save();
+      ctx.translate(cx, cy);
+
+      const base = ctx.createRadialGradient(0, 0, LR * 0.5, 0, 0, VR);
+      base.addColorStop(0, '#0f0b06'); base.addColorStop(0.35, '#0a0704'); base.addColorStop(1, '#040302');
+      ctx.fillStyle = base;
+      ctx.beginPath(); ctx.arc(0, 0, VR, 0, Math.PI * 2); ctx.fill();
+
+      // grooves
+      ctx.save();
+      ctx.beginPath(); ctx.arc(0, 0, VR - 4, 0, Math.PI * 2); ctx.arc(0, 0, LR + 4, 0, Math.PI * 2, true); ctx.clip();
+      ctx.strokeStyle = 'rgba(120,90,45,0.14)'; ctx.lineWidth = 10;
+      ctx.beginPath(); ctx.arc(0, 0, LR + 12, 0, Math.PI * 2); ctx.stroke();
+      for (let r = LR + 22; r < VR - 4; r += 2.0) {
+        const n = Math.sin(r * 3.0 + 0.3) * 0.4 + Math.cos(r * 1.1) * 0.3;
+        const b = Math.max(0, 0.024 + n * 0.018 + (Math.floor(r / 15) % 4 === 0 ? 0.016 : 0));
+        ctx.strokeStyle = `rgba(160,120,55,${b})`; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.restore();
+
+      // golden reflection band
+      ctx.save();
+      ctx.beginPath(); ctx.arc(0, 0, VR, 0, Math.PI * 2); ctx.arc(0, 0, LR + 4, 0, Math.PI * 2, true); ctx.clip();
+      const gx = VR * 0.55, gy = -VR * 0.35;
+      const glow = ctx.createRadialGradient(gx, gy, 20, gx, gy, VR * 0.95);
+      glow.addColorStop(0, 'rgba(255,200,90,0.26)'); glow.addColorStop(0.3, 'rgba(230,160,55,0.14)');
+      glow.addColorStop(0.7, 'rgba(150,95,30,0.04)'); glow.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = glow; ctx.fillRect(-VR, -VR, VR * 2, VR * 2);
+      ctx.restore();
+
+      // center label = album jacket (spins with the disc)
+      ctx.rotate(a);
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 22;
+      ctx.beginPath(); ctx.arc(0, 0, LR, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.beginPath(); ctx.arc(0, 0, LR, 0, Math.PI * 2); ctx.clip();
+      const art = artRef.current;
+      const src = (art && art.img) || (art && art.placeholder);
+      if (src) ctx.drawImage(src, -LR, -LR, LR * 2, LR * 2);
+      const jv = ctx.createRadialGradient(0, 0, LR * 0.35, 0, 0, LR);
+      jv.addColorStop(0, 'rgba(0,0,0,0)'); jv.addColorStop(1, 'rgba(0,0,0,0.4)');
+      ctx.fillStyle = jv; ctx.fillRect(-LR, -LR, LR * 2, LR * 2);
+      ctx.restore();
+
+      ctx.strokeStyle = 'rgba(15,10,5,0.7)'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(0, 0, LR, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,220,150,0.12)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(0, 0, LR - 2, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#0a0806'; ctx.beginPath(); ctx.arc(0, 0, 9, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.8)'; ctx.lineWidth = 1; ctx.stroke();
+
+      ctx.restore();
+    };
+
+    const drawArm = () => {
+      const px = W * 0.92, py = H * 0.06, tx = W * 0.52, ty = H * 0.30;
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.75)'; ctx.shadowBlur = 22; ctx.shadowOffsetY = 10;
+      const ag = ctx.createLinearGradient(px, py, tx, ty);
+      ag.addColorStop(0, '#e8e6e0'); ag.addColorStop(0.3, '#b8b4a8'); ag.addColorStop(0.5, '#8c8878'); ag.addColorStop(0.75, '#68645a'); ag.addColorStop(1, '#48443c');
+      ctx.strokeStyle = ag; ctx.lineWidth = 14; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(px, py); ctx.quadraticCurveTo((px + tx) / 2 + 30, (py + ty) / 2 - 25, tx, ty); ctx.stroke();
+      ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(px, py - 4); ctx.quadraticCurveTo((px + tx) / 2 + 30, (py + ty) / 2 - 29, tx, ty - 4); ctx.stroke();
+      ctx.restore();
+
+      const armAng = Math.atan2(ty - (py + (ty - py) * 0.72), tx - (px + (tx - px) * 0.72));
+      ctx.save(); ctx.translate(tx, ty); ctx.rotate(armAng);
+      ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 14;
+      const sg = ctx.createLinearGradient(0, -18, 0, 18);
+      sg.addColorStop(0, '#4a4842'); sg.addColorStop(0.5, '#2c2a26'); sg.addColorStop(1, '#181614');
+      ctx.fillStyle = sg; roundRect(ctx, -16, -16, 56, 32, 5); ctx.fill();
+      ctx.fillStyle = '#9c2f1e'; roundRect(ctx, 16, -12, 28, 24, 3); ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = 'rgba(210,200,190,0.8)'; ctx.lineWidth = 2.4;
+      ctx.beginPath(); ctx.moveTo(40, 8); ctx.lineTo(56, 22); ctx.stroke();
+      ctx.fillStyle = 'rgba(255,215,120,0.95)'; ctx.shadowColor = 'rgba(255,190,60,1)'; ctx.shadowBlur = 18;
+      ctx.beginPath(); ctx.arc(56, 22, 4, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+
+      ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 16;
+      const bg = ctx.createRadialGradient(px - 8, py - 8, 0, px, py, 34);
+      bg.addColorStop(0, '#e8e4d8'); bg.addColorStop(0.4, '#a8a294'); bg.addColorStop(1, '#48443c');
+      ctx.fillStyle = bg; ctx.beginPath(); ctx.arc(px, py, 32, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      ctx.fillStyle = '#1c1a16'; ctx.beginPath(); ctx.arc(px, py, 9, 0, Math.PI * 2); ctx.fill();
+    };
+
+    const render = () => {
+      ctx.clearRect(0, 0, W, H);
+      drawVinyl(angle);
+      drawArm();
+      drawGrain();
+    };
+
+    const loop = (t) => {
+      if (last !== null) angle += (t - last) * RAD_MS;
+      last = t;
+      render();
+      rafRef.current = requestAnimationFrame(loop);
+    };
+    rafRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(rafRef.current);
   }, []);
 
   return (
-    <div
-      className="flex-shrink-0 relative flex justify-center overflow-hidden"
-      style={{ height: 200 }}
-    >
-      {/* Platter — full width, bleeds off top */}
-      <canvas
-        ref={platterRef}
-        width={440}
-        height={440}
-        style={{
-          position: 'absolute',
-          top: -110,
-          width: 'min(calc(100vw + 16px), 446px)',
-          height: 'auto',
-          borderRadius: '50%',
-          boxShadow: '0 12px 60px rgba(0,0,0,0.9), 0 4px 20px rgba(0,0,0,0.7)',
-          transition: 'filter 0.5s ease',
-        }}
-      />
-
-      {/* Vinyl record — slightly smaller than platter, sits on top */}
-      <canvas
-        ref={vinylRef}
-        width={400}
-        height={400}
-        style={{
-          position: 'absolute',
-          top: -90,
-          width: 'min(calc(100vw - 8px), 422px)',
-          height: 'auto',
-          borderRadius: '50%',
-          boxShadow: '0 8px 40px rgba(0,0,0,0.95)',
-          willChange: 'transform',
-        }}
-      />
-
-      {/* Light reflection overlay — fixed, doesn't rotate */}
-      <div
-        style={{
-          position: 'absolute',
-          top: -90,
-          width: 'min(calc(100vw - 8px), 422px)',
-          paddingBottom: 'min(calc(100vw - 8px), 422px)',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          borderRadius: '50%',
-          background: `conic-gradient(
-            from 210deg,
-            transparent 0deg 50deg,
-            rgba(255,255,255,0.05) 50deg 78deg,
-            rgba(255,255,255,0.02) 78deg 100deg,
-            transparent 100deg 360deg
-          )`,
-          pointerEvents: 'none',
-        }}
-      />
-
-      {/* Tonearm — top-down, flat */}
-      <TonearmSVG />
-
-      {/* Fade-to-bg gradient at bottom of stage */}
-      <div
-        style={{
-          position: 'absolute',
-          bottom: 0, left: 0, right: 0,
-          height: 70,
-          background: 'linear-gradient(to bottom, transparent, var(--bg))',
-          pointerEvents: 'none',
-          zIndex: 10,
-        }}
-      />
-    </div>
+    <canvas
+      ref={canvasRef}
+      width={780}
+      height={438}
+      style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: 219 }}
+    />
   );
 }
 
-function TonearmSVG() {
-  return (
-    <svg
-      viewBox="0 0 100 180"
-      fill="none"
-      style={{
-        position: 'absolute',
-        right: 0,
-        top: -10,
-        width: 100,
-        height: 180,
-        zIndex: 20,
-        pointerEvents: 'none',
-        overflow: 'visible',
-      }}
-    >
-      {/* Bearing housing */}
-      <circle cx="78" cy="24" r="10" fill="var(--surface2)" stroke="var(--border)" strokeWidth="1.5" />
-      <circle cx="78" cy="24" r="5"  fill="var(--surface)"  stroke="rgba(255,255,255,0.1)" strokeWidth="0.8" />
-      <circle cx="78" cy="24" r="2"  fill="#000" />
-
-      {/* Arm tube — thin, metallic */}
-      <line x1="78" y1="24" x2="22" y2="148" stroke="#6a5a40" strokeWidth="4" strokeLinecap="round" />
-      {/* Arm highlight (top surface) */}
-      <line x1="78" y1="24" x2="22" y2="148" stroke="rgba(255,255,255,0.12)" strokeWidth="1.5" strokeLinecap="round" />
-
-      {/* Headshell — flat from above */}
-      <path d="M22 148 L12 154 L13 166 L28 168 L30 156 Z"
-        fill="var(--surface2)" stroke="var(--border)" strokeWidth="1" />
-      {/* Cartridge body */}
-      <rect x="15" y="155" width="12" height="7" rx="1"
-        fill="#3a3028" stroke="rgba(255,255,255,0.08)" strokeWidth="0.5" />
-
-      {/* Stylus */}
-      <line x1="21" y1="168" x2="21" y2="178" stroke="var(--accent)" strokeWidth="1.2" strokeLinecap="round" opacity="0.8" />
-      <circle cx="21" cy="178" r="1.5" fill="var(--accent)" opacity="0.6" />
-
-      {/* Anti-skate weight stub */}
-      <line x1="78" y1="24" x2="90" y2="18" stroke="#6a5a40" strokeWidth="2" strokeLinecap="round" />
-      <circle cx="90" cy="17" r="3" fill="var(--surface2)" stroke="var(--border)" strokeWidth="1" />
-    </svg>
-  );
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
 }
 
-/* ── Other sub-components ───────────────────────────────────────────────────── */
+// Placeholder album jacket (city-pop / vaporwave sunset). Used when a track has
+// no cover art. A track's own `cover` image overrides this when available.
+function buildAlbumArt(s) {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = s;
+  const x = cv.getContext('2d');
+  const sky = x.createLinearGradient(0, 0, 0, s);
+  sky.addColorStop(0, '#241246'); sky.addColorStop(0.40, '#7a2a6a');
+  sky.addColorStop(0.60, '#e0537a'); sky.addColorStop(0.70, '#ff8a4a'); sky.addColorStop(1, '#2a0e2e');
+  x.fillStyle = sky; x.fillRect(0, 0, s, s);
+  const cx2 = s * 0.5, cy2 = s * 0.46, hy = s * 0.62;
+  x.save();
+  x.beginPath(); x.arc(cx2, cy2, s * 0.21, 0, 7); x.clip();
+  const sun = x.createLinearGradient(0, cy2 - s * 0.21, 0, cy2 + s * 0.21);
+  sun.addColorStop(0, '#ffe870'); sun.addColorStop(0.6, '#ff9a5a'); sun.addColorStop(1, '#ff5a7a');
+  x.fillStyle = sun; x.fillRect(0, 0, s, s);
+  x.fillStyle = '#2a0e2e';
+  for (let i = 0; i < 6; i++) { const yy = cy2 + s * 0.02 + i * s * 0.032; x.fillRect(0, yy, s, s * 0.011 * (1 + i * 0.5)); }
+  x.restore();
+  x.fillStyle = 'rgba(255,190,130,0.55)'; x.fillRect(0, hy, s, 2);
+  x.strokeStyle = 'rgba(255,120,170,0.32)'; x.lineWidth = 1;
+  for (let i = -7; i <= 7; i++) { x.beginPath(); x.moveTo(cx2 + i * s * 0.05, hy); x.lineTo(cx2 + i * s * 0.5, s); x.stroke(); }
+  for (let j = 1; j < 8; j++) { const yy = hy + (s - hy) * (j * j / 64); x.beginPath(); x.moveTo(0, yy); x.lineTo(s, yy); x.stroke(); }
+  return cv;
+}
+
+/* ── SUB-COMPONENTS ─────────────────────────────────────────────────────────── */
 
 function ToggleCard({ name, sub, on, onToggle }) {
   return (
     <button
       onClick={onToggle}
-      className="flex-1 flex items-center justify-between rounded-xl px-3 py-2.5 transition-all duration-300"
+      className="flex-1 flex items-center justify-between rounded-xl px-3 py-2 transition-all duration-300"
       style={{
         background: on ? 'var(--accent-dim)' : 'var(--surface)',
         border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`,
@@ -566,61 +454,58 @@ function ToggleCard({ name, sub, on, onToggle }) {
       }}
     >
       <div className="text-left">
-        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: on ? 'var(--accent)' : 'var(--text-dim)' }}>
-          {name}
-        </div>
-        <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 1 }}>{sub}</div>
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', color: on ? 'var(--accent)' : 'var(--text-dim)' }}>{name}</div>
+        <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 1 }}>{sub}</div>
       </div>
-      <div
-        className="relative flex-shrink-0 rounded-full transition-all duration-300"
-        style={{ width: 30, height: 17, background: on ? 'var(--accent)' : 'var(--border)' }}
-      >
-        <div
-          className="absolute rounded-full transition-all duration-300"
-          style={{
-            top: 2, left: 2, width: 13, height: 13,
-            background: on ? '#fff' : 'var(--text-dim)',
-            transform: on ? 'translateX(13px)' : 'translateX(0)',
-          }}
-        />
+      <div className="relative flex-shrink-0 rounded-full transition-all duration-300" style={{ width: 34, height: 19, background: on ? 'var(--accent)' : 'var(--border)' }}>
+        <div className="absolute rounded-full transition-all duration-300" style={{ top: 2, left: 2, width: 15, height: 15, background: '#fff', transform: on ? 'translateX(15px)' : 'translateX(0)', boxShadow: '0 1px 3px rgba(0,0,0,0.5)' }} />
       </div>
     </button>
   );
 }
 
-function SuggestItem({ track, delta, top, onSelect }) {
+function Transition({ label, from, to, delta, kind }) {
+  // kind: 'bpm' | 'key' ; delta: signed number (or null)
+  const dir = delta == null || delta === 0 ? 'flat' : (delta > 0 ? 'up' : 'down');
+  const toColor = dir === 'up' ? '#52d98a' : dir === 'down' ? '#f2726b' : 'rgba(210,185,120,0.7)';
+  const deltaStr = delta == null ? null : (delta === 0 ? '±0' : (delta > 0 ? `+${delta}` : `${delta}`));
+  const bg = kind === 'bpm' ? 'rgba(232,160,48,0.09)' : 'rgba(100,210,130,0.08)';
+  return (
+    <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 4, background: bg, color: 'rgba(200,175,110,0.45)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+      {from}<span style={{ opacity: 0.45, margin: '0 1px', fontWeight: 400 }}>→</span>
+      <span style={{ color: toColor }}>{to}{deltaStr && <span style={{ fontSize: 8, marginLeft: 3, opacity: 0.9 }}>{deltaStr}</span>}</span>
+    </span>
+  );
+}
+
+function SuggestItem({ track, rank, delta, top, onSelect }) {
   return (
     <button
       onClick={() => onSelect(track)}
-      className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left transition-all duration-150"
+      className="w-full flex items-center text-left relative"
       style={{
+        gap: 10, padding: '7px 20px',
+        borderBottom: '1px solid rgba(255,255,255,0.038)',
         background: top ? 'var(--accent-dim)' : 'transparent',
-        border: `1px solid ${top ? 'var(--border)' : 'transparent'}`,
       }}
-      onMouseEnter={(e) => { if (!top) e.currentTarget.style.background = 'var(--surface2)'; }}
-      onMouseLeave={(e) => { if (!top) e.currentTarget.style.background = 'transparent'; }}
     >
-      <ArtThumb track={track} size={42} />
+      {top && <span style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: 'linear-gradient(to bottom, var(--accent), var(--accent))', borderRadius: '0 2px 2px 0' }} />}
+      <span style={{ fontSize: 11, fontWeight: 800, color: top ? 'var(--accent)' : 'rgba(200,160,70,0.28)', width: 12, textAlign: 'center', flexShrink: 0 }}>{rank}</span>
+      <ArtThumb track={track} size={40} />
       <div className="flex-1 min-w-0">
-        <p className="truncate" style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>{track.title}</p>
-        <p className="truncate" style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 1 }}>
+        <div className="flex items-center" style={{ gap: 7 }}>
+          <span className="truncate" style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', minWidth: 0 }}>{track.title}</span>
+          {delta && (
+            <>
+              <Transition kind="bpm" from={delta.bpmFrom} to={delta.bpmTo} delta={delta.bpmDelta} />
+              <Transition kind="key" from={delta.fromKey} to={delta.toKey} delta={delta.keyDelta} />
+            </>
+          )}
+        </div>
+        <p className="truncate" style={{ fontSize: 10, color: 'rgba(200,175,110,0.4)', marginTop: 2 }}>
           {track.artist}{track.genre ? ` · ${track.genre}` : ''}
         </p>
       </div>
-      {delta && (
-        <div className="flex-shrink-0 flex flex-col items-end gap-0.5">
-          <span style={{ fontFamily: 'monospace', fontSize: 11, fontVariantNumeric: 'tabular-nums', color: 'var(--text-dim)', whiteSpace: 'nowrap' }}>
-            {delta.bpmFrom}→{delta.bpmTo}{' '}
-            <span style={{ color: 'var(--accent)', fontSize: 10 }}>{delta.bpmDelta}</span>
-          </span>
-          <span style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--text-dim)', whiteSpace: 'nowrap' }}>
-            {delta.fromKey}→{delta.toKey}
-            {delta.keyDelta != null && (
-              <span style={{ color: 'var(--accent)', fontSize: 10 }}> {delta.keyDelta}</span>
-            )}
-          </span>
-        </div>
-      )}
     </button>
   );
 }
@@ -628,18 +513,24 @@ function SuggestItem({ track, delta, top, onSelect }) {
 function ArtThumb({ track, size }) {
   return (
     <div
-      className="flex-shrink-0 rounded-lg overflow-hidden flex items-center justify-center"
-      style={{ width: size, height: size, background: 'var(--surface2)', border: '1px solid var(--border)' }}
+      className="flex-shrink-0 overflow-hidden flex items-center justify-center"
+      style={{ width: size, height: size, borderRadius: 6, background: track.cover ? 'var(--surface2)' : gradientFor(track), boxShadow: '0 2px 6px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(255,255,255,0.06)' }}
     >
       {track.cover ? (
-        <img src={track.cover} alt={track.album} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-      ) : (
-        <svg viewBox="0 0 24 24" style={{ width: size * 0.5, height: size * 0.5, color: 'var(--text-muted)' }} fill="currentColor">
-          <circle cx="12" cy="12" r="10" opacity="0.3" />
-          <circle cx="12" cy="12" r="4" opacity="0.5" />
-          <circle cx="12" cy="12" r="1.5" />
-        </svg>
-      )}
+        <img src={track.cover} alt={track.album || track.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+      ) : null}
     </div>
   );
+}
+
+// Deterministic colorful jacket placeholder from a track's identity.
+function gradientFor(track) {
+  const str = String(track.id ?? track.title ?? '');
+  // FNV-1a hash → well-distributed hue even for short similar ids
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+  h >>>= 0;
+  const a = h % 360;
+  const b = (a + 50 + (h >> 9) % 60) % 360;
+  return `linear-gradient(135deg, hsl(${a} 68% 56%), hsl(${b} 72% 46%) 60%, hsl(${(a + 210) % 360} 55% 18%))`;
 }

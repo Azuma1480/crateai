@@ -3,6 +3,7 @@ import { getSetting, setSetting, getAllSettings } from '../lib/db.js';
 import { testDiscogs } from '../lib/discogs.js';
 import { testSpotify } from '../lib/spotify.js';
 import { importLibraryFromFile } from '../lib/importExport.js';
+import { importRekordboxFile } from '../lib/rekordbox.js';
 
 const API_GROUPS = [
   {
@@ -46,6 +47,7 @@ export default function Settings({
   const [saveMsg, setSaveMsg] = useState('');
 
   const fileInputRef = useRef(null);
+  const rbInputRef = useRef(null);
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState('');
   const [importError, setImportError] = useState(null);
@@ -109,6 +111,24 @@ export default function Settings({
     } finally {
       setImporting(false);
       setImportProgress(null);
+      e.target.value = '';
+    }
+  };
+
+  const handleRekordboxImport = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    setImportError(null);
+    setImportMsg('');
+    try {
+      const result = await importRekordboxFile(file);
+      setImportMsg(`✓ Rekordboxから${result.tracks}曲を取り込み（BPMあり ${result.withBpm} / キーあり ${result.withKey}）`);
+      onImportComplete?.();
+    } catch (err) {
+      setImportError(err.message);
+    } finally {
+      setImporting(false);
       e.target.value = '';
     }
   };
@@ -254,7 +274,32 @@ export default function Settings({
         })}
 
         {/* ── IMPORT ──────────────────────────────────────────────────────── */}
-        <Section title="Import Library" hint="Load tracks from a JSON file">
+        <Section title="Import Library" hint="Rekordbox XML (BPM+キー解析済み) または JSON">
+          <div className="px-4 pb-3 pt-3">
+            <input
+              ref={rbInputRef}
+              type="file"
+              accept=".xml,text/xml,application/xml"
+              onChange={handleRekordboxImport}
+              className="hidden"
+            />
+            <button
+              onClick={() => rbInputRef.current?.click()}
+              disabled={importing}
+              className="w-full flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold disabled:opacity-50"
+              style={{ background: 'var(--accent)', color: 'var(--bg)' }}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              Rekordbox XML を取り込む
+            </button>
+            <p style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 6 }}>
+              Rekordbox: ファイル → ライブラリを書き出す → xml形式。解析済みのBPMとキーがそのまま入ります。
+            </p>
+          </div>
           <div className="px-4 pb-4">
             <input
               ref={fileInputRef}

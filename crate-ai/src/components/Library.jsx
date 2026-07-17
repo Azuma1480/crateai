@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { getAllTracks, updateTrackGenre } from '../lib/db.js';
+import { getAllTracks, updateTrackGenre, saveTrack, deleteTrack } from '../lib/db.js';
 import { toCamelot, keyName } from '../lib/camelot.js';
 import { gradientFor } from '../lib/art.js';
+import { camelotToKeyMode } from '../lib/rekordbox.js';
+import { CAMELOT_KEYS } from './AddRecord.jsx';
 
 const GENRES = [
   'All', 'R&B', 'Korean Indie', 'Japanese City Pop', 'Funk', 'Hip-Hop',
@@ -41,6 +43,28 @@ export default function Library({ libraryVersion, setNowPlaying, keyFormat = 'ca
   const handleGenreChange = async (id, newGenre) => {
     await updateTrackGenre(id, newGenre);
     setTracks((prev) => prev.map((t) => (t.id === id ? { ...t, genre: newGenre } : t)));
+  };
+
+  const handleSaveEdit = async (track, edits) => {
+    const { key, mode } = edits.camelotKey ? camelotToKeyMode(edits.camelotKey) : { key: null, mode: null };
+    const updated = {
+      ...track,
+      bpm: edits.bpm ? Math.round(Number(edits.bpm)) : null,
+      camelotKey: edits.camelotKey || null,
+      key, mode,
+      year: edits.year ? Number(edits.year) : null,
+      album: edits.album.trim() || null,
+      genre: edits.genre || null,
+    };
+    await saveTrack(updated);
+    setTracks((prev) => prev.map((t) => (t.id === track.id ? updated : t)));
+  };
+
+  const handleDelete = async (track) => {
+    if (!window.confirm(`「${track.title}」を削除しますか？`)) return;
+    await deleteTrack(track.id);
+    setTracks((prev) => prev.filter((t) => t.id !== track.id));
+    setExpandedId(null);
   };
 
   const displayKey = (track) => {
@@ -189,43 +213,151 @@ export default function Library({ libraryVersion, setNowPlaying, keyFormat = 'ca
                 </div>
               </button>
 
-              {/* Expanded: play + genre */}
+              {/* Expanded: play + genre + edit/delete */}
               {isExpanded && (
-                <div className="px-3 pb-3 flex gap-2 items-center" style={{ borderTop: '1px solid var(--border)', paddingTop: 10 }}>
-                  {setNowPlaying && (
-                    <button
-                      onClick={() => { setNowPlaying(track); setExpandedId(null); }}
-                      className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all"
-                      style={{ background: 'var(--accent)', color: 'var(--bg)' }}
-                    >
-                      <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: 10, height: 10 }}>
-                        <polygon points="5 3 19 12 5 21 5 3" />
-                      </svg>
-                      Play Now
-                    </button>
-                  )}
-                  <select
-                    value={track.genre || ''}
-                    onChange={(e) => handleGenreChange(track.id, e.target.value)}
-                    onClick={(e) => e.stopPropagation()}
-                    className="flex-1 text-xs rounded-lg px-2 py-1.5 outline-none"
-                    style={{
-                      background: 'var(--surface2)',
-                      border: '1px solid var(--border)',
-                      color: 'var(--text-dim)',
-                    }}
-                  >
-                    <option value="">— Set genre —</option>
-                    {GENRES.slice(1).map((g) => (
-                      <option key={g} value={g}>{g}</option>
-                    ))}
-                  </select>
-                </div>
+                <ExpandedPanel
+                  track={track}
+                  setNowPlaying={setNowPlaying ? (t) => { setNowPlaying(t); setExpandedId(null); } : null}
+                  onGenreChange={handleGenreChange}
+                  onSaveEdit={handleSaveEdit}
+                  onDelete={handleDelete}
+                />
               )}
             </div>
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function ExpandedPanel({ track, setNowPlaying, onGenreChange, onSaveEdit, onDelete }) {
+  const [editing, setEditing] = useState(false);
+  const [edits, setEdits] = useState({
+    bpm: track.bpm ?? '',
+    camelotKey: track.camelotKey ?? toCamelot(track.key, track.mode) ?? '',
+    year: track.year ?? '',
+    album: track.album ?? '',
+    genre: track.genre ?? '',
+  });
+  const set = (k, v) => setEdits((p) => ({ ...p, [k]: v }));
+
+  const inputStyle = { background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text)' };
+
+  if (editing) {
+    return (
+      <div className="px-3 pb-3 flex flex-col gap-2" style={{ borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+        <div className="grid grid-cols-3 gap-2">
+          <div>
+            <label className="block mb-1" style={{ fontSize: 10, color: 'var(--text-dim)' }}>BPM</label>
+            <input
+              type="text" inputMode="decimal" value={edits.bpm}
+              onChange={(e) => set('bpm', e.target.value.replace(/[^\d.]/g, ''))}
+              className="w-full text-xs rounded-lg px-2 py-1.5 outline-none" style={inputStyle}
+            />
+          </div>
+          <div>
+            <label className="block mb-1" style={{ fontSize: 10, color: 'var(--text-dim)' }}>Key</label>
+            <select
+              value={edits.camelotKey} onChange={(e) => set('camelotKey', e.target.value)}
+              className="w-full text-xs rounded-lg px-2 py-1.5 outline-none" style={inputStyle}
+            >
+              <option value="">—</option>
+              {CAMELOT_KEYS.map((k) => <option key={k} value={k}>{k}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block mb-1" style={{ fontSize: 10, color: 'var(--text-dim)' }}>Year</label>
+            <input
+              type="text" inputMode="numeric" value={edits.year}
+              onChange={(e) => set('year', e.target.value.replace(/[^\d]/g, '').slice(0, 4))}
+              className="w-full text-xs rounded-lg px-2 py-1.5 outline-none" style={inputStyle}
+            />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="block mb-1" style={{ fontSize: 10, color: 'var(--text-dim)' }}>Album</label>
+            <input
+              type="text" value={edits.album} onChange={(e) => set('album', e.target.value)}
+              className="w-full text-xs rounded-lg px-2 py-1.5 outline-none" style={inputStyle}
+            />
+          </div>
+          <div>
+            <label className="block mb-1" style={{ fontSize: 10, color: 'var(--text-dim)' }}>Genre</label>
+            <select
+              value={edits.genre} onChange={(e) => set('genre', e.target.value)}
+              className="w-full text-xs rounded-lg px-2 py-1.5 outline-none" style={inputStyle}
+            >
+              <option value="">—</option>
+              {GENRES.slice(1).map((g) => <option key={g} value={g}>{g}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={async () => { await onSaveEdit(track, edits); setEditing(false); }}
+            className="flex-1 rounded-lg px-3 py-2 text-xs font-semibold"
+            style={{ background: 'var(--accent)', color: 'var(--bg)' }}
+          >
+            保存
+          </button>
+          <button
+            onClick={() => setEditing(false)}
+            className="rounded-lg px-3 py-2 text-xs"
+            style={{ background: 'var(--surface2)', color: 'var(--text-dim)', border: '1px solid var(--border)' }}
+          >
+            キャンセル
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-3 pb-3 flex gap-2 items-center" style={{ borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+      {setNowPlaying && (
+        <button
+          onClick={() => setNowPlaying(track)}
+          className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold"
+          style={{ background: 'var(--accent)', color: 'var(--bg)' }}
+        >
+          <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: 10, height: 10 }}>
+            <polygon points="5 3 19 12 5 21 5 3" />
+          </svg>
+          Play Now
+        </button>
+      )}
+      <select
+        value={track.genre || ''}
+        onChange={(e) => onGenreChange(track.id, e.target.value)}
+        onClick={(e) => e.stopPropagation()}
+        className="flex-1 text-xs rounded-lg px-2 py-1.5 outline-none min-w-0"
+        style={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text-dim)' }}
+      >
+        <option value="">— Set genre —</option>
+        {GENRES.slice(1).map((g) => (
+          <option key={g} value={g}>{g}</option>
+        ))}
+      </select>
+      <button
+        onClick={() => setEditing(true)}
+        className="rounded-lg px-3 py-1.5 text-xs font-semibold flex-shrink-0"
+        style={{ background: 'var(--surface2)', color: 'var(--text)', border: '1px solid var(--border)' }}
+      >
+        編集
+      </button>
+      <button
+        onClick={() => onDelete(track)}
+        className="rounded-lg px-2.5 py-1.5 text-xs flex-shrink-0"
+        style={{ background: 'rgba(242,114,107,0.1)', color: '#f2726b', border: '1px solid rgba(242,114,107,0.35)' }}
+        aria-label="Delete track"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} style={{ width: 13, height: 13 }}>
+          <polyline points="3 6 5 6 21 6" />
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+        </svg>
+      </button>
     </div>
   );
 }

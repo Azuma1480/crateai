@@ -3,7 +3,13 @@ import { searchDiscogs, getRelease } from '../lib/discogs.js';
 import { searchSpotifyTrack } from '../lib/spotify.js';
 import { getSetting, saveAlbum, saveTracks } from '../lib/db.js';
 import { gradientFor } from '../lib/art.js';
+import { camelotToKeyMode } from '../lib/rekordbox.js';
 import PhotoImport from './PhotoImport.jsx';
+
+export const CAMELOT_KEYS = [
+  '1A', '2A', '3A', '4A', '5A', '6A', '7A', '8A', '9A', '10A', '11A', '12A',
+  '1B', '2B', '3B', '4B', '5B', '6B', '7B', '8B', '9B', '10B', '11B', '12B',
+];
 
 const GENRES = [
   'R&B', 'Korean Indie', 'Japanese City Pop', 'Funk', 'Hip-Hop',
@@ -173,7 +179,7 @@ export default function AddRecord({ onImportComplete }) {
         {step === 'search' && (
           <div className="flex flex-col gap-4">
             <div className="flex gap-1 rounded-xl p-1" style={{ background: 'var(--surface2)' }}>
-              {[['discogs', 'Discogs'], ['photo', 'Photo']].map(([m, label]) => (
+              {[['discogs', 'Discogs'], ['photo', 'Photo'], ['manual', 'Manual']].map(([m, label]) => (
                 <button
                   key={m}
                   type="button"
@@ -186,9 +192,9 @@ export default function AddRecord({ onImportComplete }) {
               ))}
             </div>
 
-            {mode === 'photo' ? (
-              <PhotoImport onImportComplete={onImportComplete} />
-            ) : (
+            {mode === 'photo' && <PhotoImport onImportComplete={onImportComplete} />}
+            {mode === 'manual' && <ManualAdd onImportComplete={onImportComplete} />}
+            {mode === 'discogs' && (
               <form onSubmit={handleSearch} className="flex flex-col gap-4">
                 <div>
                   <label style={{ fontSize: 11, color: 'var(--text-dim)', display: 'block', marginBottom: 6 }}>
@@ -364,6 +370,115 @@ export default function AddRecord({ onImportComplete }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/* ── Manual single-track entry — no APIs, guaranteed to work offline ── */
+function ManualAdd({ onImportComplete }) {
+  const [form, setForm] = useState({ title: '', artist: '', album: '', year: '', bpm: '', camelotKey: '', genre: '' });
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  const set = (k, v) => { setForm((p) => ({ ...p, [k]: v })); setMsg(''); };
+  const canSave = form.title.trim() && form.artist.trim();
+
+  const handleSave = async () => {
+    if (!canSave) return;
+    setSaving(true);
+    try {
+      const { key, mode } = form.camelotKey ? camelotToKeyMode(form.camelotKey) : { key: null, mode: null };
+      const id = `manual_${`${form.artist}_${form.title}`.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/\s+/g, '_')}`;
+      await saveTracks([{
+        id,
+        albumId: null,
+        title: form.title.trim(),
+        artist: form.artist.trim(),
+        album: form.album.trim() || null,
+        year: form.year ? Number(form.year) : null,
+        genre: form.genre || null,
+        bpm: form.bpm ? Math.round(Number(form.bpm)) : null,
+        camelotKey: form.camelotKey || null,
+        key, mode,
+        cover: null,
+        source: 'manual',
+      }]);
+      setMsg(`✓ 「${form.title.trim()}」を登録しました`);
+      setForm({ title: '', artist: '', album: '', year: '', bpm: '', camelotKey: '', genre: '' });
+      onImportComplete?.();
+    } catch (err) {
+      setMsg(`エラー: ${err.message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const field = (label, key, props = {}) => (
+    <div>
+      <label className="block mb-1.5" style={{ fontSize: 11, color: 'var(--text-dim)' }}>{label}</label>
+      <input
+        type="text"
+        value={form[key]}
+        onChange={(e) => set(key, props.numeric ? e.target.value.replace(/[^\d.]/g, '') : e.target.value)}
+        placeholder={props.placeholder || ''}
+        inputMode={props.numeric ? 'decimal' : undefined}
+        className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+        style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)' }}
+        onFocus={(e) => (e.target.style.borderColor = 'var(--accent)')}
+        onBlur={(e) => (e.target.style.borderColor = 'var(--border)')}
+      />
+    </div>
+  );
+
+  return (
+    <div className="rounded-xl p-4 flex flex-col gap-3" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+      <p style={{ fontSize: 11, color: 'var(--text-dim)' }}>
+        1曲を直接登録します。BPMとキーはサジェストに必要です（後からLibraryで編集もできます）。
+      </p>
+      {field('Track title *', 'title', { placeholder: 'e.g. Stay With Me' })}
+      {field('Artist *', 'artist', { placeholder: 'e.g. Miki Matsubara' })}
+      {field('Album', 'album', { placeholder: 'e.g. Pocket Park' })}
+      <div className="grid grid-cols-2 gap-2">
+        {field('Year', 'year', { placeholder: '1979', numeric: true })}
+        {field('BPM', 'bpm', { placeholder: '112', numeric: true })}
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="block mb-1.5" style={{ fontSize: 11, color: 'var(--text-dim)' }}>Key (Camelot)</label>
+          <select
+            value={form.camelotKey}
+            onChange={(e) => set('camelotKey', e.target.value)}
+            className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+            style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)' }}
+          >
+            <option value="">— なし —</option>
+            {CAMELOT_KEYS.map((k) => <option key={k} value={k}>{k}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block mb-1.5" style={{ fontSize: 11, color: 'var(--text-dim)' }}>Genre</label>
+          <select
+            value={form.genre}
+            onChange={(e) => set('genre', e.target.value)}
+            className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+            style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)' }}
+          >
+            <option value="">— なし —</option>
+            {GENRES.map((g) => <option key={g} value={g}>{g}</option>)}
+          </select>
+        </div>
+      </div>
+      {msg && (
+        <p style={{ fontSize: 12, color: msg.startsWith('✓') ? '#52d98a' : '#f2726b' }}>{msg}</p>
+      )}
+      <button
+        onClick={handleSave}
+        disabled={!canSave || saving}
+        className="w-full py-3 rounded-xl font-semibold text-sm disabled:opacity-50"
+        style={{ background: canSave ? 'var(--accent)' : 'var(--surface2)', color: canSave ? 'var(--bg)' : 'var(--text-muted)' }}
+      >
+        {saving ? '登録中…' : 'ライブラリに登録'}
+      </button>
     </div>
   );
 }

@@ -53,6 +53,31 @@ html, body, #root {
   overflow: hidden;
 }
 
+/* Constrain the app to a phone (iPhone 11 · 414×896) and center it.
+   On a real phone it fills the screen; on wider/taller displays it stays
+   phone-shaped instead of stretching to the full window. */
+#root {
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
+  background: #000;
+}
+#root > * {
+  width: 100%;
+  max-width: 414px;
+  height: 100%;
+}
+@media (min-width: 460px) {
+  #root { align-items: center; padding: 20px; }
+  #root > * {
+    height: 100%;
+    max-height: 896px;
+    border-radius: 44px;
+    overflow: hidden;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6);
+  }
+}
+
 body {
   margin: 0;
   background-color: var(--bg);

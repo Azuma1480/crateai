@@ -2,10 +2,47 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ─── DESIGN TOKENS ────────────────────────────────────────────────────────── */
+/* Modern Retro: warm dark, amber accent — default */
 :root {
   color-scheme: dark;
+
+  --bg:          #0d0a06;
+  --surface:     #1c1509;
+  --surface2:    #251e0d;
+  --border:      #332b18;
+  --accent:      #e8a030;
+  --accent-dim:  rgba(232,160,48,0.14);
+  --accent-glow: rgba(232,160,48,0.32);
+  --text:        #c8b48a;
+  --text-dim:    #7a6a52;
+  --text-muted:  #3a3028;
+  --nav-bg:      #120f08;
+  --streak:      rgba(232,160,48,0.55);
+  --streak2:     rgba(255,200,100,0.25);
+
+  /* transitions */
+  --t: 0.5s ease;
 }
 
+/* Modern: cool dark, ice-blue accent — KAM ON */
+:root.kam-on {
+  --bg:          #060910;
+  --surface:     #0b1220;
+  --surface2:    #101c2e;
+  --border:      #1a2d44;
+  --accent:      #5ab4e8;
+  --accent-dim:  rgba(90,180,232,0.12);
+  --accent-glow: rgba(90,180,232,0.38);
+  --text:        #a8c4d8;
+  --text-dim:    #4a6880;
+  --text-muted:  #1e3448;
+  --nav-bg:      #040710;
+  --streak:      rgba(90,180,232,0.5);
+  --streak2:     rgba(160,220,255,0.2);
+}
+
+/* ─── RESET & BASE ─────────────────────────────────────────────────────────── */
 * {
   -webkit-tap-highlight-color: transparent;
   box-sizing: border-box;
@@ -18,52 +55,77 @@ html, body, #root {
 
 body {
   margin: 0;
-  background-color: #0f0f0f;
-  color: #f3f4f6;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
+  transition: background-color var(--t), color var(--t);
 }
 
-/* Safe area padding for iPhone notch/home indicator */
-.safe-top { padding-top: env(safe-area-inset-top); }
+/* Safe area */
+.safe-top  { padding-top:    env(safe-area-inset-top); }
 .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
 
-/* Scrollable content area */
-.scroll-area {
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-}
-
-/* Custom scrollbar */
-.scroll-area::-webkit-scrollbar { width: 4px; }
+/* Scroll */
+.scroll-area { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.scroll-area::-webkit-scrollbar { width: 3px; }
 .scroll-area::-webkit-scrollbar-track { background: transparent; }
-.scroll-area::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 2px; }
+.scroll-area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
-/* Pulse animation for recording state */
-@keyframes pulse-ring {
-  0% { transform: scale(1); opacity: 1; }
-  100% { transform: scale(1.5); opacity: 0; }
-}
-
-.pulse-ring {
-  animation: pulse-ring 1.2s ease-out infinite;
-}
-
-/* Spin animation */
+/* ─── ANIMATIONS ───────────────────────────────────────────────────────────── */
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+.spin { animation: spin 0.8s linear infinite; }
 
-.spin {
-  animation: spin 0.8s linear infinite;
+@keyframes vinyl-spin {
+  to { transform: rotate(360deg); }
 }
 
-/* Fade in */
+@keyframes pulse-ring {
+  0%   { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1.5); opacity: 0; }
+}
+.pulse-ring { animation: pulse-ring 1.2s ease-out infinite; }
+
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-in { animation: fadeIn 0.2s ease-out; }
+
+/* X2 speed streaks */
+@keyframes streak-down {
+  0%   { opacity: 0; transform: translateY(var(--streak-start)); }
+  8%   { opacity: 1; }
+  88%  { opacity: 0.85; }
+  100% { opacity: 0; transform: translateY(var(--streak-end)); }
 }
 
-.fade-in {
-  animation: fadeIn 0.2s ease-out;
+.streak {
+  position: fixed;
+  border-radius: 3px;
+  animation: streak-down linear infinite;
+  pointer-events: none;
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .streak { animation: none; opacity: 0; }
+  .vinyl-record { animation: none !important; }
+}
+
+/* ─── VINYL RECORD ─────────────────────────────────────────────────────────── */
+.vinyl-record {
+  animation: vinyl-spin 3.5s linear infinite;
+  transform-origin: center center;
+}
+
+/* ─── THEME-AWARE UTILITY CLASSES ──────────────────────────────────────────── */
+.bg-surface    { background-color: var(--surface); }
+.bg-surface2   { background-color: var(--surface2); }
+.border-theme  { border-color: var(--border); }
+.text-theme    { color: var(--text); }
+.text-dim      { color: var(--text-dim); }
+.text-muted    { color: var(--text-muted); }
+.text-accent   { color: var(--accent); }
+.bg-accent-dim { background-color: var(--accent-dim); }

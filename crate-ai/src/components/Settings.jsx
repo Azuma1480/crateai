@@ -4,10 +4,10 @@ import { testDiscogs } from '../lib/discogs.js';
 import { testSpotify } from '../lib/spotify.js';
 import { importLibraryFromFile } from '../lib/importExport.js';
 
-const FIELDS = [
+const API_GROUPS = [
   {
     group: 'Discogs',
-    hint: 'Get a token at discogs.com/settings/developers',
+    hint: 'discogs.com/settings/developers',
     fields: [
       { key: 'discogsToken', label: 'Personal Access Token', type: 'password', placeholder: 'your discogs token' },
     ],
@@ -18,7 +18,7 @@ const FIELDS = [
   },
   {
     group: 'Spotify',
-    hint: 'Create an app at developer.spotify.com/dashboard',
+    hint: 'developer.spotify.com/dashboard',
     fields: [
       { key: 'spotifyClientId', label: 'Client ID', type: 'text', placeholder: 'client id' },
       { key: 'spotifyClientSecret', label: 'Client Secret', type: 'password', placeholder: 'client secret' },
@@ -31,9 +31,15 @@ const FIELDS = [
   },
 ];
 
-export default function Settings({ onImportComplete }) {
-  const [values, setValues] = useState({});
-  const [saved, setSaved] = useState({});
+export default function Settings({
+  onImportComplete,
+  keyFormat, setKeyFormat,
+  kamOn, setKamOn,
+  x2On, setX2On,
+  includePlayed, setIncludePlayed,
+}) {
+  const [apiValues, setApiValues] = useState({});
+  const [savedApi, setSavedApi] = useState({});
   const [testing, setTesting] = useState({});
   const [testResults, setTestResults] = useState({});
   const [saving, setSaving] = useState(false);
@@ -46,19 +52,14 @@ export default function Settings({ onImportComplete }) {
   const [importProgress, setImportProgress] = useState(null);
 
   useEffect(() => {
-    getAllSettings().then((s) => {
-      setValues(s);
-      setSaved(s);
-    });
+    getAllSettings().then((s) => { setApiValues(s); setSavedApi(s); });
   }, []);
 
   const handleChange = (key, val) => {
-    setValues((prev) => ({ ...prev, [key]: val }));
-    // Clear test result when user edits
+    setApiValues((prev) => ({ ...prev, [key]: val }));
     setTestResults((prev) => {
       const next = { ...prev };
-      // Find which group this key belongs to and clear that group's result
-      for (const g of FIELDS) {
+      for (const g of API_GROUPS) {
         if (g.fields.some((f) => f.key === key)) delete next[g.group];
       }
       return next;
@@ -68,11 +69,11 @@ export default function Settings({ onImportComplete }) {
   const handleSave = async () => {
     setSaving(true);
     try {
-      for (const [key, val] of Object.entries(values)) {
+      for (const [key, val] of Object.entries(apiValues)) {
         await setSetting(key, val);
       }
-      setSaved({ ...values });
-      setSaveMsg('Saved!');
+      setSavedApi({ ...apiValues });
+      setSaveMsg('Saved');
       setTimeout(() => setSaveMsg(''), 2000);
     } finally {
       setSaving(false);
@@ -80,30 +81,28 @@ export default function Settings({ onImportComplete }) {
   };
 
   const handleTest = async (group) => {
-    setTesting((prev) => ({ ...prev, [group.group]: true }));
-    setTestResults((prev) => ({ ...prev, [group.group]: null }));
+    setTesting((p) => ({ ...p, [group.group]: true }));
+    setTestResults((p) => ({ ...p, [group.group]: null }));
     try {
-      const ok = await group.test(values);
-      setTestResults((prev) => ({ ...prev, [group.group]: ok ? 'ok' : 'fail' }));
+      const ok = await group.test(apiValues);
+      setTestResults((p) => ({ ...p, [group.group]: ok ? 'ok' : 'fail' }));
     } catch (err) {
-      setTestResults((prev) => ({ ...prev, [group.group]: `error: ${err.message}` }));
+      setTestResults((p) => ({ ...p, [group.group]: `error: ${err.message}` }));
     } finally {
-      setTesting((prev) => ({ ...prev, [group.group]: false }));
+      setTesting((p) => ({ ...p, [group.group]: false }));
     }
   };
 
-  const handleImportFile = async (e) => {
+  const handleImport = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     setImporting(true);
     setImportError(null);
     setImportMsg('');
     setImportProgress(null);
-
     try {
       const result = await importLibraryFromFile(file, (p) => setImportProgress(p));
-      setImportMsg(`✓ ${result.albums}枚 / ${result.tracks}曲をライブラリに追加しました`);
+      setImportMsg(`✓ ${result.albums} albums / ${result.tracks} tracks imported`);
       onImportComplete?.();
     } catch (err) {
       setImportError(err.message);
@@ -114,76 +113,121 @@ export default function Settings({ onImportComplete }) {
     }
   };
 
-  const hasChanges = JSON.stringify(values) !== JSON.stringify(saved);
+  const hasApiChanges = JSON.stringify(apiValues) !== JSON.stringify(savedApi);
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="px-4 pt-4 pb-3 bg-[#0f0f0f]">
-        <h1 className="text-xl font-bold text-gray-100">Settings</h1>
-        <p className="text-xs text-gray-500 mt-0.5">
-          API keys are stored locally on your device only
+    <div
+      className="flex flex-col h-full transition-colors duration-500"
+      style={{ background: 'var(--bg)' }}
+    >
+      <div className="px-4 pt-4 pb-3 flex-shrink-0">
+        <h1 className="font-bold" style={{ fontSize: 22, color: 'var(--text)', letterSpacing: '-0.02em' }}>
+          Settings
+        </h1>
+        <p style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 2 }}>
+          API keys stored locally · No account required
         </p>
       </div>
 
-      <div className="flex-1 scroll-area px-4 pb-6 space-y-6">
-        {FIELDS.map((group) => {
+      <div className="flex-1 scroll-area px-4 pb-6 flex flex-col gap-3">
+
+        {/* ── PLAYBACK ─────────────────────────────────────────────────────── */}
+        <Section title="Playback">
+          <Row label="Key Format" sub="Camelot (8A) or musical notation (Am)">
+            <div
+              className="flex rounded-lg p-0.5 gap-0.5"
+              style={{ background: 'var(--surface2)' }}
+            >
+              {[['camelot', '8A'], ['musical', 'Am']].map(([val, label]) => (
+                <button
+                  key={val}
+                  onClick={() => setKeyFormat(val)}
+                  className="px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200"
+                  style={{
+                    background: keyFormat === val ? 'var(--accent)' : 'transparent',
+                    color: keyFormat === val ? 'var(--bg)' : 'var(--text-dim)',
+                    fontFamily: 'monospace',
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </Row>
+          <Row label="Include Played Tracks" sub="Show recently played records in suggestions" last>
+            <Toggle on={includePlayed} onToggle={() => setIncludePlayed(!includePlayed)} />
+          </Row>
+        </Section>
+
+        {/* ── DJ MODES ─────────────────────────────────────────────────────── */}
+        <Section title="DJ Modes">
+          <Row
+            label="Key Adaptation Mode"
+            sub="Calculates pitch-shifted key when tempo-matching on SL-1200"
+          >
+            <Toggle on={kamOn} onToggle={() => setKamOn(!kamOn)} />
+          </Row>
+          <Row
+            label="X2 BPM Range"
+            sub="Expand suggestion range from ±8% to ±16% pitch"
+            last
+          >
+            <Toggle on={x2On} onToggle={() => setX2On(!x2On)} />
+          </Row>
+        </Section>
+
+        {/* ── API GROUPS ──────────────────────────────────────────────────── */}
+        {API_GROUPS.map((group) => {
           const result = testResults[group.group];
           const isOk = result === 'ok';
           const isFail = result && result !== 'ok';
-
           return (
-            <div key={group.group} className="bg-[#1a1a1a] rounded-2xl overflow-hidden">
-              {/* Group header */}
-              <div className="px-4 pt-4 pb-2 flex items-center justify-between">
-                <div>
-                  <p className="font-semibold text-gray-100">{group.group}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">{group.hint}</p>
+            <Section
+              key={group.group}
+              title={group.group}
+              hint={group.hint}
+              badge={isOk ? '✓' : isFail ? '✗' : null}
+              badgeOk={isOk}
+            >
+              {group.fields.map((field) => (
+                <div key={field.key} className="px-4 pb-3">
+                  <label style={{ fontSize: 11, color: 'var(--text-dim)', display: 'block', marginBottom: 6 }}>
+                    {field.label}
+                  </label>
+                  <input
+                    type={field.type}
+                    value={apiValues[field.key] || ''}
+                    onChange={(e) => handleChange(field.key, e.target.value)}
+                    placeholder={field.placeholder}
+                    autoComplete="off"
+                    spellCheck={false}
+                    className="w-full rounded-xl px-3 py-2.5 text-sm font-mono outline-none"
+                    style={{
+                      background: 'var(--bg)',
+                      border: '1px solid var(--border)',
+                      color: 'var(--text)',
+                    }}
+                    onFocus={(e) => (e.target.style.borderColor = 'var(--accent)')}
+                    onBlur={(e) => (e.target.style.borderColor = 'var(--border)')}
+                  />
                 </div>
-                {isOk && (
-                  <span className="text-green-400 text-lg">✓</span>
-                )}
-                {isFail && (
-                  <span className="text-red-400 text-sm">✗</span>
-                )}
-              </div>
-
-              {/* Fields */}
-              <div className="px-4 pb-3 space-y-3">
-                {group.fields.map((field) => (
-                  <div key={field.key}>
-                    <label className="block text-xs text-gray-500 mb-1.5">{field.label}</label>
-                    <input
-                      type={field.type}
-                      value={values[field.key] || ''}
-                      onChange={(e) => handleChange(field.key, e.target.value)}
-                      placeholder={field.placeholder}
-                      autoComplete="off"
-                      autoCorrect="off"
-                      spellCheck={false}
-                      className="w-full bg-[#0f0f0f] border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-sm text-gray-200 placeholder-gray-600 focus:border-violet-500 focus:outline-none font-mono"
-                    />
-                  </div>
-                ))}
-              </div>
-
-              {/* Test result */}
-              {isFail && result !== 'fail' && (
+              ))}
+              {isFail && (
                 <div className="px-4 pb-3">
-                  <p className="text-xs text-red-400">{result}</p>
+                  <p style={{ fontSize: 11, color: '#f87171' }}>
+                    {result === 'fail' ? 'Connection failed — check your credentials' : result}
+                  </p>
                 </div>
               )}
-              {result === 'fail' && (
-                <div className="px-4 pb-3">
-                  <p className="text-xs text-red-400">Connection failed — check your credentials</p>
-                </div>
-              )}
-
-              {/* Test button */}
-              <div className="px-4 pb-4 border-t border-[#2a2a2a] pt-3">
+              <div
+                className="px-4 pb-4 pt-3"
+                style={{ borderTop: '1px solid var(--border)' }}
+              >
                 <button
                   onClick={() => handleTest(group)}
                   disabled={testing[group.group]}
-                  className="text-sm text-violet-400 flex items-center gap-1.5 disabled:opacity-50"
+                  className="flex items-center gap-1.5 disabled:opacity-50"
+                  style={{ fontSize: 12, color: 'var(--accent)' }}
                 >
                   {testing[group.group] ? (
                     <>
@@ -205,31 +249,25 @@ export default function Settings({ onImportComplete }) {
                   )}
                 </button>
               </div>
-            </div>
+            </Section>
           );
         })}
 
-        {/* Import library from JSON */}
-        <div className="bg-[#1a1a1a] rounded-2xl overflow-hidden">
-          <div className="px-4 pt-4 pb-2">
-            <p className="font-semibold text-gray-100">Import Library</p>
-            <p className="text-xs text-gray-500 mt-0.5">
-              JSONファイルから曲リストをまとめて読み込みます
-            </p>
-          </div>
-
-          <div className="px-4 pb-4 space-y-2">
+        {/* ── IMPORT ──────────────────────────────────────────────────────── */}
+        <Section title="Import Library" hint="Load tracks from a JSON file">
+          <div className="px-4 pb-4">
             <input
               ref={fileInputRef}
               type="file"
               accept="application/json,.json"
-              onChange={handleImportFile}
+              onChange={handleImport}
               className="hidden"
             />
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={importing}
-              className="w-full bg-[#0f0f0f] border border-[#2a2a2a] text-gray-200 rounded-xl px-3 py-2.5 text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-50"
+              className="w-full flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium disabled:opacity-50"
+              style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)' }}
             >
               {importing ? (
                 <>
@@ -238,8 +276,8 @@ export default function Settings({ onImportComplete }) {
                     <path d="M21 12a9 9 0 1 1-6.219-8.56" />
                   </svg>
                   {importProgress
-                    ? `インポート中… ${importProgress.albums}/${importProgress.total}枚`
-                    : 'インポート中…'}
+                    ? `Importing… ${importProgress.albums}/${importProgress.total}`
+                    : 'Importing…'}
                 </>
               ) : (
                 <>
@@ -249,42 +287,109 @@ export default function Settings({ onImportComplete }) {
                     <polyline points="7 10 12 15 17 10" />
                     <line x1="12" y1="15" x2="12" y2="3" />
                   </svg>
-                  JSONファイルを選択
+                  Select JSON File
                 </>
               )}
             </button>
-
             {importMsg && (
-              <p className="text-xs text-green-400 px-1">{importMsg}</p>
+              <p style={{ fontSize: 12, color: '#4ade80', marginTop: 8 }}>{importMsg}</p>
             )}
             {importError && (
-              <p className="text-xs text-red-400 px-1">{importError}</p>
+              <p style={{ fontSize: 12, color: '#f87171', marginTop: 8 }}>{importError}</p>
             )}
           </div>
-        </div>
+        </Section>
 
-        {/* Save button */}
+        {/* ── SAVE ────────────────────────────────────────────────────────── */}
         <button
           onClick={handleSave}
-          disabled={saving || !hasChanges}
-          className={`w-full py-3.5 rounded-xl font-semibold text-sm transition-colors ${
-            hasChanges
-              ? 'bg-violet-600 text-white'
-              : 'bg-[#1a1a1a] text-gray-500 cursor-default'
-          }`}
+          disabled={saving || !hasApiChanges}
+          className="w-full py-3.5 rounded-xl font-semibold text-sm transition-all duration-300"
+          style={{
+            background: hasApiChanges ? 'var(--accent)' : 'var(--surface)',
+            color: hasApiChanges ? 'var(--bg)' : 'var(--text-muted)',
+            cursor: hasApiChanges ? 'pointer' : 'default',
+          }}
         >
-          {saving ? 'Saving…' : saveMsg || (hasChanges ? 'Save Changes' : 'No changes')}
+          {saving ? 'Saving…' : saveMsg || (hasApiChanges ? 'Save Changes' : 'No changes')}
         </button>
 
-        {/* About */}
-        <div className="bg-[#1a1a1a] rounded-2xl p-4 space-y-1">
-          <p className="text-sm font-semibold text-gray-300">CrateAI</p>
-          <p className="text-xs text-gray-500">v1.0 · Built for analog DJs</p>
-          <p className="text-xs text-gray-600 mt-2">
-            All data stored locally on your device. No account required.
+        {/* ── ABOUT ───────────────────────────────────────────────────────── */}
+        <div
+          className="rounded-2xl p-4"
+          style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+        >
+          <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>CrateAI</p>
+          <p style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 3 }}>
+            v2.0 · Built for analog DJs
+          </p>
+          <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
+            All data stored locally. No account required.
           </p>
         </div>
+
       </div>
     </div>
+  );
+}
+
+function Section({ title, hint, badge, badgeOk, children }) {
+  return (
+    <div
+      className="rounded-2xl overflow-hidden transition-colors duration-500"
+      style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+    >
+      <div
+        className="px-4 pt-3 pb-2 flex items-center justify-between"
+        style={{ borderBottom: '1px solid var(--border)' }}
+      >
+        <div>
+          <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-dim)' }}>
+            {title}
+          </p>
+          {hint && (
+            <p style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 1 }}>{hint}</p>
+          )}
+        </div>
+        {badge && (
+          <span style={{ color: badgeOk ? '#4ade80' : '#f87171', fontSize: 14 }}>{badge}</span>
+        )}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function Row({ label, sub, last, children }) {
+  return (
+    <div
+      className="flex items-center justify-between gap-3 px-4 py-3"
+      style={{ borderBottom: last ? 'none' : '1px solid var(--border)' }}
+    >
+      <div className="flex-1 min-w-0">
+        <p style={{ fontSize: 13, color: 'var(--text)' }}>{label}</p>
+        {sub && <p style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 1 }}>{sub}</p>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function Toggle({ on, onToggle }) {
+  return (
+    <button
+      onClick={onToggle}
+      className="relative flex-shrink-0 rounded-full transition-all duration-300"
+      style={{ width: 44, height: 24, background: on ? 'var(--accent)' : 'var(--border)' }}
+    >
+      <div
+        className="absolute rounded-full transition-all duration-300"
+        style={{
+          top: 3, left: 3, width: 18, height: 18,
+          background: on ? '#fff' : 'var(--text-dim)',
+          transform: on ? 'translateX(20px)' : 'translateX(0)',
+        }}
+      />
+    </button>
   );
 }

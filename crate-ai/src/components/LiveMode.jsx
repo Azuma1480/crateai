@@ -1,25 +1,25 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { getAllTracks } from '../lib/db.js';
-import { getSuggestions, filterByBpm } from '../lib/suggestions.js';
-import { detectBpmFromMic } from '../lib/bpmDetect.js';
+import { getSuggestions } from '../lib/suggestions.js';
 import { toCamelot, keyName } from '../lib/camelot.js';
-import TrackCard from './TrackCard.jsx';
+import { pitchPercent, isPitchFeasible, shiftKeyByPitch, camelotDelta } from '../lib/kam.js';
 
-export default function LiveMode({ nowPlaying, setNowPlaying, libraryVersion }) {
+export default function LiveMode({
+  nowPlaying, setNowPlaying,
+  libraryVersion,
+  kamOn, setKamOn,
+  x2On, setX2On,
+  keyFormat,
+  includePlayed,
+}) {
   const [library, setLibrary] = useState([]);
   const [suggestions, setSuggestions] = useState([]);
+  const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
-  const [showSearch, setShowSearch] = useState(false);
-  const [bpmMode, setBpmMode] = useState(false); // BPM detection mode
-  const [bpmDetecting, setBpmDetecting] = useState(false);
-  const [bpmProgress, setBpmProgress] = useState(0);
-  const [detectedBpm, setDetectedBpm] = useState(null);
-  const [bpmCandidates, setBpmCandidates] = useState([]);
-  const [error, setError] = useState(null);
+  const [playHistory, setPlayHistory] = useState(new Set());
   const searchRef = useRef(null);
 
-  // Load library
   const loadLibrary = useCallback(async () => {
     const all = await getAllTracks();
     setLibrary(all);
@@ -27,376 +27,487 @@ export default function LiveMode({ nowPlaying, setNowPlaying, libraryVersion }) 
 
   useEffect(() => { loadLibrary(); }, [loadLibrary, libraryVersion]);
 
-  // Recompute suggestions when nowPlaying or library changes
+  // Recompute suggestions
   useEffect(() => {
-    if (nowPlaying && library.length > 0) {
-      const s = getSuggestions(nowPlaying, library, 5);
-      setSuggestions(s);
-    } else {
-      setSuggestions([]);
-    }
-  }, [nowPlaying, library]);
+    if (!nowPlaying || library.length === 0) { setSuggestions([]); return; }
+    const all = getSuggestions(nowPlaying, library, 12, x2On);
+    const filtered = includePlayed
+      ? all
+      : all.filter((t) => !playHistory.has(t.id));
+    setSuggestions(filtered.slice(0, 8));
+  }, [nowPlaying, library, x2On, includePlayed, playHistory]);
 
-  // ─── Search within library ─────────────────────────────────────────────────
+  // Search
   useEffect(() => {
-    if (searchQuery.length < 2) {
-      setSearchResults([]);
-      return;
-    }
+    if (searchQuery.length < 2) { setSearchResults([]); return; }
     const q = searchQuery.toLowerCase();
-    const results = library.filter(
-      (t) =>
-        t.title?.toLowerCase().includes(q) ||
-        t.artist?.toLowerCase().includes(q) ||
-        t.album?.toLowerCase().includes(q)
+    setSearchResults(
+      library
+        .filter((t) =>
+          t.title?.toLowerCase().includes(q) ||
+          t.artist?.toLowerCase().includes(q) ||
+          t.album?.toLowerCase().includes(q)
+        )
+        .slice(0, 20)
     );
-    setSearchResults(results.slice(0, 20));
   }, [searchQuery, library]);
 
-  const handleSelectTrack = (track) => {
+  const handleSelectNowPlaying = (track) => {
+    if (nowPlaying) setPlayHistory((h) => new Set([...h, nowPlaying.id]));
     setNowPlaying(track);
     setShowSearch(false);
     setSearchQuery('');
-    setBpmMode(false);
-    setBpmCandidates([]);
-    setDetectedBpm(null);
-    setError(null);
   };
 
-  // ─── BPM Detection ────────────────────────────────────────────────────────
-  const handleBpmDetect = async () => {
-    setError(null);
-    setBpmDetecting(true);
-    setBpmProgress(0);
-    setBpmCandidates([]);
-    try {
-      const bpm = await detectBpmFromMic((pct) => setBpmProgress(pct));
-      setBpmDetecting(false);
-      if (!bpm) {
-        setError('Could not detect BPM. Try in a quieter environment or search manually.');
-        return;
-      }
-      setDetectedBpm(bpm);
-      const candidates = filterByBpm(library, bpm, 5);
-      setBpmCandidates(candidates);
-    } catch (err) {
-      setBpmDetecting(false);
-      setError(err.message);
+  const handleSelectSuggestion = (track) => {
+    if (nowPlaying) setPlayHistory((h) => new Set([...h, nowPlaying.id]));
+    setNowPlaying(track);
+  };
+
+  // Key display helpers
+  const displayKey = (camelotKey, spotifyKey, mode) => {
+    const cam = camelotKey ?? toCamelot(spotifyKey, mode);
+    if (!cam) return '—';
+    return keyFormat === 'camelot' ? cam : keyName(spotifyKey, mode) ?? cam;
+  };
+
+  // For a suggestion, compute the BPM/key delta rows
+  const buildDeltaRow = (sug) => {
+    const np = nowPlaying;
+    if (!np?.bpm || !sug.bpm) return null;
+
+    const pitch = pitchPercent(np.bpm, sug.bpm);
+    const pitchedBpm = Math.round(np.bpm * (1 + pitch / 100));
+    const bpmDelta = pitchedBpm - np.bpm;
+    const sign = bpmDelta >= 0 ? '+' : '';
+
+    const npCam = np.camelotKey ?? toCamelot(np.key, np.mode);
+    const sugCam = sug.camelotKey ?? toCamelot(sug.key, sug.mode);
+
+    let fromKeyDisplay, toKeyDisplay, keyDeltaDisplay;
+
+    if (kamOn && npCam) {
+      const shiftedCam = shiftKeyByPitch(npCam, pitch);
+      fromKeyDisplay = keyFormat === 'camelot' ? shiftedCam : (keyName(np.key, np.mode) ?? shiftedCam);
+      toKeyDisplay   = keyFormat === 'camelot' ? sugCam     : (keyName(sug.key, sug.mode) ?? sugCam);
+      const delta = camelotDelta(shiftedCam, sugCam);
+      keyDeltaDisplay = delta === 0 ? '±0' : (delta > 0 ? `+${delta}` : `${delta}`);
+    } else {
+      fromKeyDisplay = displayKey(npCam, np.key, np.mode);
+      toKeyDisplay   = displayKey(sugCam, sug.key, sug.mode);
+      keyDeltaDisplay = null;
     }
+
+    return {
+      bpmFrom: np.bpm,
+      bpmTo: pitchedBpm,
+      bpmDelta: `${sign}${bpmDelta}`,
+      fromKey: fromKeyDisplay,
+      toKey: toKeyDisplay,
+      keyDelta: keyDeltaDisplay,
+    };
   };
 
-  const camelot = nowPlaying ? toCamelot(nowPlaying.key, nowPlaying.mode) : null;
+  const npCam = nowPlaying ? (nowPlaying.camelotKey ?? toCamelot(nowPlaying.key, nowPlaying.mode)) : null;
+  const npKeyDisplay = nowPlaying ? displayKey(npCam, nowPlaying.key, nowPlaying.mode) : null;
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="px-4 pt-4 pb-3 bg-[#0f0f0f]">
-        <h1 className="text-xl font-bold text-gray-100">Live</h1>
-      </div>
+    <div
+      className="flex flex-col h-full overflow-hidden transition-colors duration-500"
+      style={{ background: 'var(--bg)' }}
+    >
+      {/* ── VINYL STAGE ─────────────────────────────────────────────────────── */}
+      <div className="relative flex justify-center flex-shrink-0" style={{ height: 190 }}>
 
-      <div className="flex-1 scroll-area px-4 pb-4 space-y-4">
-        {/* ── NOW PLAYING ─────────────────────────────────────────────────── */}
-        <div className="bg-[#1a1a1a] rounded-2xl overflow-hidden">
-          <div className="px-4 pt-4 pb-2 flex items-center justify-between">
-            <span className="text-[10px] font-semibold text-violet-400 tracking-widest uppercase">
-              Now Playing
-            </span>
-            {nowPlaying && (
-              <button
-                onClick={() => { setNowPlaying(null); setSuggestions([]); }}
-                className="text-xs text-gray-500 hover:text-gray-300"
-              >
-                Clear
-              </button>
-            )}
-          </div>
-
-          {nowPlaying ? (
-            <div className="px-4 pb-4">
-              <div className="flex gap-3 items-start">
-                <div className="w-14 h-14 flex-shrink-0 rounded-xl bg-[#2a2a2a] overflow-hidden">
-                  {nowPlaying.cover ? (
-                    <img src={nowPlaying.cover} alt={nowPlaying.album}
-                      className="w-full h-full object-cover" />
-                  ) : (
-                    <VinylIcon />
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-gray-100 truncate">{nowPlaying.title}</p>
-                  <p className="text-sm text-gray-400 truncate">{nowPlaying.artist}</p>
-                  <p className="text-xs text-gray-500 truncate">{nowPlaying.album}</p>
-                </div>
-              </div>
-              {/* Track stats */}
-              <div className="flex gap-2 mt-3 flex-wrap">
-                {nowPlaying.bpm && (
-                  <Chip label={`${nowPlaying.bpm} BPM`} accent />
-                )}
-                {camelot && (
-                  <Chip label={camelot} />
-                )}
-                {nowPlaying.key != null && (
-                  <Chip label={keyName(nowPlaying.key, nowPlaying.mode)} />
-                )}
-                {nowPlaying.genre && (
-                  <Chip label={nowPlaying.genre} />
-                )}
-                {nowPlaying.energy != null && (
-                  <Chip label={`Energy ${Math.round(nowPlaying.energy * 100)}%`} />
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="px-4 pb-4">
-              <p className="text-sm text-gray-500 mb-3">
-                Search your library or detect BPM to find the current track
-              </p>
-            </div>
-          )}
-
-          {/* ── Action buttons ───────────────────────────────────────────── */}
-          <div className="border-t border-[#2a2a2a] flex">
-            <button
-              onClick={() => {
-                setShowSearch(true);
-                setBpmMode(false);
-                setBpmCandidates([]);
-                setTimeout(() => searchRef.current?.focus(), 50);
-              }}
-              className="flex-1 flex items-center justify-center gap-2 py-3 text-sm text-gray-300 hover:bg-white/5 transition-colors"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
-                className="w-4 h-4">
-                <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
-              </svg>
-              Search
-            </button>
-            <div className="w-px bg-[#2a2a2a]" />
-            <button
-              onClick={() => {
-                setBpmMode(true);
-                setShowSearch(false);
-                setSearchQuery('');
-                setError(null);
-              }}
-              className="flex-1 flex items-center justify-center gap-2 py-3 text-sm text-gray-300 hover:bg-white/5 transition-colors"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
-                className="w-4 h-4">
-                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                <line x1="12" y1="19" x2="12" y2="23" />
-                <line x1="8" y1="23" x2="16" y2="23" />
-              </svg>
-              Detect BPM
-            </button>
-          </div>
+        {/* Wood platter — bleeds off top */}
+        <div
+          className="absolute rounded-full"
+          style={{
+            top: -50, width: 270, height: 270,
+            background: `conic-gradient(
+              from 0deg,
+              var(--surface2) 0deg 14deg, var(--surface) 14deg 30deg,
+              var(--surface2) 30deg 44deg, var(--surface) 44deg 60deg,
+              var(--surface2) 60deg 72deg, var(--surface) 72deg 88deg,
+              var(--surface2) 88deg 100deg, var(--surface) 100deg 116deg,
+              var(--surface2) 116deg 130deg, var(--surface) 130deg 144deg,
+              var(--surface2) 144deg 160deg, var(--surface) 160deg 174deg,
+              var(--surface2) 174deg 188deg, var(--surface) 188deg 204deg,
+              var(--surface2) 204deg 218deg, var(--surface) 218deg 234deg,
+              var(--surface2) 234deg 248deg, var(--surface) 248deg 264deg,
+              var(--surface2) 264deg 278deg, var(--surface) 278deg 294deg,
+              var(--surface2) 294deg 308deg, var(--surface) 308deg 324deg,
+              var(--surface2) 324deg 338deg, var(--surface) 338deg 354deg,
+              var(--surface2) 354deg 360deg
+            )`,
+            boxShadow: '0 8px 40px rgba(0,0,0,0.85), inset 0 0 30px rgba(0,0,0,0.45)',
+            transition: 'background var(--t)',
+          }}
+        >
+          <div
+            className="absolute rounded-full"
+            style={{ inset: 7, border: '2px solid rgba(0,0,0,0.45)', boxShadow: 'inset 0 0 12px rgba(0,0,0,0.6)' }}
+          />
         </div>
 
-        {/* Error */}
-        {error && (
-          <div className="bg-red-900/20 border border-red-800 rounded-xl p-3 text-sm text-red-300">
-            {error}
+        {/* Vinyl record — oversized, overflows platter bottom */}
+        <div
+          className="absolute vinyl-record rounded-full"
+          style={{
+            top: -62, width: 256, height: 256,
+            background: `
+              radial-gradient(circle at 50% 50%, #0a0a0a 0%, #0a0a0a 17%, transparent 17%),
+              repeating-radial-gradient(
+                circle at 50% 50%,
+                #0a0a0a 0px, #111 1px, #080808 2px, #101010 3px, #090909 4px
+              )
+            `,
+            boxShadow: '0 0 0 1px rgba(255,255,255,0.04), 0 14px 60px rgba(0,0,0,0.95)',
+          }}
+        >
+          {/* Label */}
+          <div
+            className="absolute rounded-full flex flex-col items-center justify-center gap-1"
+            style={{
+              top: '50%', left: '50%',
+              transform: 'translate(-50%,-50%)',
+              width: 72, height: 72,
+              background: 'var(--bg)',
+              border: '1px solid var(--border)',
+            }}
+          >
+            <span style={{ fontSize: 7, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--accent)', opacity: 0.9 }}>
+              CRATE
+            </span>
+            <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#000', border: '1px solid var(--border)' }} />
+            <span style={{ fontSize: 7, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--accent)', opacity: 0.9 }}>
+              AI
+            </span>
+          </div>
+          {/* Sheen */}
+          <div
+            className="absolute inset-0 rounded-full pointer-events-none"
+            style={{
+              background: `conic-gradient(
+                from 200deg,
+                transparent 0deg 55deg,
+                rgba(255,255,255,0.045) 55deg 90deg,
+                transparent 90deg 360deg
+              )`,
+            }}
+          />
+        </div>
+
+        {/* Tonearm */}
+        <svg
+          viewBox="0 0 90 170"
+          fill="none"
+          className="absolute"
+          style={{ top: 0, right: 28, width: 90, height: 170, overflow: 'visible', zIndex: 5, pointerEvents: 'none' }}
+        >
+          <circle cx="68" cy="22" r="9" fill="var(--surface2)" stroke="var(--border)" strokeWidth="1.5" />
+          <circle cx="68" cy="22" r="3.5" fill="var(--surface)" stroke="var(--border)" strokeWidth="1" />
+          <line x1="68" y1="22" x2="20" y2="138"
+            stroke="var(--tonearm, #8a7050)" strokeWidth="3.5" strokeLinecap="round" />
+          <line x1="68" y1="22" x2="20" y2="138"
+            stroke="rgba(255,255,255,0.04)" strokeWidth="1.5" strokeLinecap="round" />
+          <path d="M 20 138 L 9 148 L 11 160 L 25 160 L 27 148 Z"
+            fill="var(--surface2)" stroke="var(--border)" strokeWidth="1" />
+          <line x1="18" y1="160" x2="17" y2="170" stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round" opacity="0.7" />
+        </svg>
+      </div>
+
+      {/* ── NOW PLAYING ──────────────────────────────────────────────────────── */}
+      <div
+        className="flex-shrink-0 px-4 pb-3"
+        style={{
+          background: `linear-gradient(to bottom, transparent 0%, var(--bg) 32%)`,
+          marginTop: -36,
+        }}
+      >
+        <p style={{ fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-dim)' }}>
+          Now Playing
+        </p>
+
+        {nowPlaying ? (
+          <div className="flex items-start gap-3 mt-1.5">
+            <ArtThumb track={nowPlaying} size={48} />
+            <div className="flex-1 min-w-0">
+              <p
+                className="font-semibold truncate"
+                style={{ fontSize: 16, color: 'var(--text)', lineHeight: 1.2 }}
+              >
+                {nowPlaying.title}
+              </p>
+              <p style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 2 }}>
+                {nowPlaying.artist}
+                {nowPlaying.genre ? ` · ${nowPlaying.genre}` : ''}
+              </p>
+              <div className="flex items-center gap-2 mt-1.5">
+                {nowPlaying.bpm && (
+                  <span style={{ fontFamily: 'monospace', fontSize: 13, color: 'var(--accent)', fontVariantNumeric: 'tabular-nums' }}>
+                    {nowPlaying.bpm} BPM
+                  </span>
+                )}
+                {npKeyDisplay && (
+                  <>
+                    <span style={{ width: 1, height: 12, background: 'var(--border)', display: 'inline-block' }} />
+                    <span style={{ fontFamily: 'monospace', fontSize: 13, color: 'var(--accent)' }}>
+                      {npKeyDisplay}
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
+            <button
+              onClick={() => setNowPlaying(null)}
+              style={{ color: 'var(--text-muted)', fontSize: 11, flexShrink: 0, paddingTop: 2 }}
+            >
+              ✕
+            </button>
+          </div>
+        ) : (
+          <div style={{ marginTop: 6 }}>
+            <p style={{ fontSize: 13, color: 'var(--text-dim)' }}>
+              Search your library to set the track you&apos;re playing
+            </p>
           </div>
         )}
 
-        {/* ── SEARCH PANEL ────────────────────────────────────────────────── */}
+        <button
+          onClick={() => { setShowSearch((v) => !v); setTimeout(() => searchRef.current?.focus(), 50); }}
+          className="flex items-center gap-1.5 mt-2.5"
+          style={{ fontSize: 12, color: 'var(--accent)' }}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} style={{ width: 13, height: 13 }}>
+            <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
+          </svg>
+          {nowPlaying ? 'Change track' : 'Search library'}
+        </button>
+
         {showSearch && (
-          <div className="bg-[#1a1a1a] rounded-2xl overflow-hidden fade-in">
-            <div className="px-4 pt-3 pb-2 flex gap-2">
+          <div
+            className="mt-2 rounded-2xl overflow-hidden"
+            style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+          >
+            <div className="flex gap-2 p-2">
               <input
                 ref={searchRef}
                 type="search"
-                placeholder="Search your library…"
+                placeholder="Search…"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="flex-1 bg-[#0f0f0f] border border-[#2a2a2a] rounded-xl px-3 py-2 text-sm text-gray-100 placeholder-gray-600 focus:border-violet-500 focus:outline-none"
+                className="flex-1 rounded-xl px-3 py-2 text-sm outline-none"
+                style={{
+                  background: 'var(--bg)',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text)',
+                }}
               />
               <button
                 onClick={() => { setShowSearch(false); setSearchQuery(''); }}
-                className="text-gray-500 px-2"
+                style={{ color: 'var(--text-dim)', fontSize: 12 }}
               >
                 Cancel
               </button>
             </div>
-            <div className="max-h-64 overflow-y-auto divide-y divide-[#2a2a2a]">
+            <div style={{ maxHeight: 200, overflowY: 'auto' }}>
               {searchQuery.length >= 2 && searchResults.length === 0 && (
-                <p className="text-sm text-gray-500 px-4 py-3">No results</p>
+                <p className="px-4 py-3" style={{ fontSize: 13, color: 'var(--text-dim)' }}>No results</p>
               )}
               {searchResults.map((t) => (
-                <TrackCard
+                <button
                   key={t.id}
-                  track={t}
-                  compact
-                  onSelect={handleSelectTrack}
-                />
+                  onClick={() => handleSelectNowPlaying(t)}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 text-left"
+                  style={{ borderTop: '1px solid var(--border)' }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface2)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                >
+                  <ArtThumb track={t} size={36} />
+                  <div className="flex-1 min-w-0">
+                    <p className="truncate" style={{ fontSize: 13, color: 'var(--text)', fontWeight: 500 }}>{t.title}</p>
+                    <p className="truncate" style={{ fontSize: 11, color: 'var(--text-dim)' }}>{t.artist}</p>
+                  </div>
+                  {t.bpm && (
+                    <span style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--text-dim)', flexShrink: 0 }}>
+                      {t.bpm}
+                    </span>
+                  )}
+                </button>
               ))}
             </div>
           </div>
         )}
+      </div>
 
-        {/* ── BPM DETECTION PANEL ─────────────────────────────────────────── */}
-        {bpmMode && (
-          <div className="bg-[#1a1a1a] rounded-2xl p-4 fade-in space-y-4">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-medium text-gray-200">BPM Detection</p>
-              <button
-                onClick={() => { setBpmMode(false); setBpmCandidates([]); setDetectedBpm(null); }}
-                className="text-gray-500 text-xs"
-              >
-                ✕
-              </button>
-            </div>
+      {/* ── KAM / X2 CONTROLS ───────────────────────────────────────────────── */}
+      <div className="flex gap-2 px-4 pb-3 flex-shrink-0">
+        <ToggleCard
+          name="KAM"
+          sub="Key Adaptation"
+          on={kamOn}
+          onToggle={() => setKamOn(!kamOn)}
+        />
+        <ToggleCard
+          name="X2"
+          sub="±16% BPM Range"
+          on={x2On}
+          onToggle={() => setX2On(!x2On)}
+        />
+      </div>
 
-            {!bpmDetecting && !detectedBpm && (
-              <div className="text-center space-y-3">
-                <p className="text-sm text-gray-400">
-                  Hold your phone near the speaker for 10 seconds
-                </p>
-                <button
-                  onClick={handleBpmDetect}
-                  className="w-full bg-violet-600 text-white py-3 rounded-xl font-medium flex items-center justify-center gap-2"
-                >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
-                    className="w-5 h-5">
-                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                  </svg>
-                  Start listening
-                </button>
-              </div>
-            )}
-
-            {bpmDetecting && (
-              <div className="text-center space-y-3">
-                <div className="relative w-16 h-16 mx-auto">
-                  <div className="absolute inset-0 rounded-full bg-violet-600/20 pulse-ring" />
-                  <div className="absolute inset-0 rounded-full bg-violet-600/10 pulse-ring"
-                    style={{ animationDelay: '0.4s' }} />
-                  <div className="w-16 h-16 rounded-full bg-violet-900/40 border-2 border-violet-500 flex items-center justify-center">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
-                      className="w-7 h-7 text-violet-400">
-                      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                      <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                    </svg>
-                  </div>
-                </div>
-                <p className="text-sm text-gray-300">Listening… {bpmProgress}%</p>
-                <div className="w-full bg-[#2a2a2a] rounded-full h-1.5">
-                  <div
-                    className="bg-violet-500 h-1.5 rounded-full transition-all"
-                    style={{ width: `${bpmProgress}%` }}
-                  />
-                </div>
-              </div>
-            )}
-
-            {detectedBpm && !bpmDetecting && (
-              <div className="space-y-3">
-                <div className="text-center">
-                  <p className="text-3xl font-bold text-violet-400 font-mono">{detectedBpm}</p>
-                  <p className="text-sm text-gray-400">BPM detected</p>
-                </div>
-                {bpmCandidates.length === 0 ? (
-                  <p className="text-sm text-gray-500 text-center">
-                    No tracks in your library match {detectedBpm} ±5 BPM
-                  </p>
-                ) : (
-                  <>
-                    <p className="text-xs text-gray-500">
-                      {bpmCandidates.length} match{bpmCandidates.length !== 1 ? 'es' : ''} in your library
-                    </p>
-                    <div className="divide-y divide-[#2a2a2a] rounded-xl overflow-hidden bg-[#0f0f0f]">
-                      {bpmCandidates.slice(0, 10).map((t) => (
-                        <TrackCard
-                          key={t.id}
-                          track={t}
-                          compact
-                          onSelect={handleSelectTrack}
-                        />
-                      ))}
-                    </div>
-                  </>
-                )}
-                <button
-                  onClick={() => { setDetectedBpm(null); setBpmCandidates([]); }}
-                  className="w-full text-sm text-gray-400 py-2 border border-[#2a2a2a] rounded-xl"
-                >
-                  Try again
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ── SUGGESTIONS ─────────────────────────────────────────────────── */}
+      {/* ── SUGGEST HEADER ──────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between px-4 pb-2 flex-shrink-0">
+        <span style={{ fontSize: 10, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-dim)' }}>
+          Suggestions
+        </span>
         {nowPlaying && (
-          <div>
-            <p className="text-[10px] font-semibold text-gray-500 tracking-widest uppercase mb-2">
-              Play Next
-            </p>
-            {suggestions.length === 0 ? (
-              <div className="bg-[#1a1a1a] rounded-xl p-4 text-center">
-                <p className="text-sm text-gray-500">No suggestions yet</p>
-                <p className="text-xs text-gray-600 mt-1">
-                  Make sure your library has tracks with BPM and key data
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-0">
-                {suggestions.map((track, i) => (
-                  <div key={track.id} className="relative">
-                    <div className="absolute -left-0 top-3 w-5 h-5 rounded-full bg-violet-900/50 flex items-center justify-center z-10 ml-3">
-                      <span className="text-[9px] text-violet-300 font-bold">{i + 1}</span>
-                    </div>
-                    <div className="pl-2">
-                      <TrackCard
-                        track={track}
-                        showReason
-                        onSelect={handleSelectTrack}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <span style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--text-muted)' }}>
+            {suggestions.length} tracks
+          </span>
         )}
+      </div>
 
-        {!nowPlaying && !showSearch && !bpmMode && library.length === 0 && (
-          <div className="text-center py-8">
-            <p className="text-gray-500 text-sm">Your library is empty</p>
-            <p className="text-gray-600 text-xs mt-1">Add records first</p>
-          </div>
+      {/* ── SUGGEST LIST ────────────────────────────────────────────────────── */}
+      <div className="flex-1 scroll-area px-3 pb-3 flex flex-col gap-0.5">
+        {!nowPlaying && (
+          <p className="text-center py-8" style={{ fontSize: 13, color: 'var(--text-dim)' }}>
+            Set a track above to see suggestions
+          </p>
         )}
+        {nowPlaying && suggestions.length === 0 && library.length > 0 && (
+          <p className="text-center py-8" style={{ fontSize: 13, color: 'var(--text-dim)' }}>
+            No compatible tracks in range — try enabling X2
+          </p>
+        )}
+        {nowPlaying && library.length === 0 && (
+          <p className="text-center py-8" style={{ fontSize: 13, color: 'var(--text-dim)' }}>
+            Your library is empty — import tracks in Settings
+          </p>
+        )}
+        {suggestions.map((sug, i) => {
+          const delta = buildDeltaRow(sug);
+          const isTop = i < 3;
+          return (
+            <SuggestItem
+              key={sug.id}
+              track={sug}
+              delta={delta}
+              top={isTop}
+              onSelect={handleSelectSuggestion}
+            />
+          );
+        })}
       </div>
     </div>
   );
 }
 
-function Chip({ label, accent = false }) {
+/* ── Sub-components ─────────────────────────────────────────────────────────── */
+
+function ToggleCard({ name, sub, on, onToggle }) {
   return (
-    <span
-      className={`text-xs px-2 py-0.5 rounded-full font-mono ${
-        accent
-          ? 'bg-violet-900/40 text-violet-300'
-          : 'bg-[#2a2a2a] text-gray-400'
-      }`}
+    <button
+      onClick={onToggle}
+      className="flex-1 flex items-center justify-between rounded-xl px-3 py-2.5 transition-all duration-300"
+      style={{
+        background: on ? 'var(--accent-dim)' : 'var(--surface)',
+        border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`,
+        boxShadow: on ? '0 0 14px var(--accent-glow)' : 'none',
+      }}
     >
-      {label}
-    </span>
+      <div className="text-left">
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: on ? 'var(--accent)' : 'var(--text-dim)' }}>
+          {name}
+        </div>
+        <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 1 }}>{sub}</div>
+      </div>
+      <Pill on={on} />
+    </button>
   );
 }
 
-function VinylIcon() {
+function Pill({ on }) {
   return (
-    <div className="w-full h-full flex items-center justify-center bg-[#2a2a2a]">
-      <svg viewBox="0 0 24 24" className="w-7 h-7 text-gray-600" fill="currentColor">
-        <circle cx="12" cy="12" r="10" opacity="0.3" />
-        <circle cx="12" cy="12" r="4" opacity="0.5" />
-        <circle cx="12" cy="12" r="1.5" />
-      </svg>
+    <div
+      className="relative flex-shrink-0 rounded-full transition-all duration-300"
+      style={{
+        width: 30, height: 17,
+        background: on ? 'var(--accent)' : 'var(--border)',
+      }}
+    >
+      <div
+        className="absolute rounded-full transition-all duration-300"
+        style={{
+          top: 2, left: 2, width: 13, height: 13,
+          background: on ? '#fff' : 'var(--text-dim)',
+          transform: on ? 'translateX(13px)' : 'translateX(0)',
+        }}
+      />
+    </div>
+  );
+}
+
+function SuggestItem({ track, delta, top, onSelect }) {
+  return (
+    <button
+      onClick={() => onSelect(track)}
+      className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left transition-all duration-150"
+      style={{
+        background: top ? 'var(--accent-dim)' : 'transparent',
+        border: `1px solid ${top ? 'var(--border)' : 'transparent'}`,
+      }}
+      onMouseEnter={(e) => { if (!top) e.currentTarget.style.background = 'var(--surface2)'; }}
+      onMouseLeave={(e) => { if (!top) e.currentTarget.style.background = 'transparent'; }}
+    >
+      <ArtThumb track={track} size={42} />
+      <div className="flex-1 min-w-0">
+        <p className="truncate" style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>
+          {track.title}
+        </p>
+        <p className="truncate" style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 1 }}>
+          {track.artist}{track.genre ? ` · ${track.genre}` : ''}
+        </p>
+      </div>
+      {delta && (
+        <div className="flex-shrink-0 flex flex-col items-end gap-0.5">
+          <span style={{ fontFamily: 'monospace', fontSize: 11, fontVariantNumeric: 'tabular-nums', color: 'var(--text-dim)', whiteSpace: 'nowrap' }}>
+            {delta.bpmFrom}→{delta.bpmTo}{' '}
+            <span style={{ color: 'var(--accent)', fontSize: 10 }}>{delta.bpmDelta}</span>
+          </span>
+          <span style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--text-dim)', whiteSpace: 'nowrap' }}>
+            {delta.fromKey}→{delta.toKey}
+            {delta.keyDelta != null && (
+              <span style={{ color: 'var(--accent)', fontSize: 10 }}> {delta.keyDelta}</span>
+            )}
+          </span>
+        </div>
+      )}
+    </button>
+  );
+}
+
+function ArtThumb({ track, size }) {
+  return (
+    <div
+      className="flex-shrink-0 rounded-lg overflow-hidden flex items-center justify-center"
+      style={{
+        width: size, height: size,
+        background: 'var(--surface2)',
+        border: '1px solid var(--border)',
+      }}
+    >
+      {track.cover ? (
+        <img src={track.cover} alt={track.album} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+      ) : (
+        <svg viewBox="0 0 24 24" style={{ width: size * 0.5, height: size * 0.5, color: 'var(--text-muted)' }}
+          fill="currentColor">
+          <circle cx="12" cy="12" r="10" opacity="0.3" />
+          <circle cx="12" cy="12" r="4" opacity="0.5" />
+          <circle cx="12" cy="12" r="1.5" />
+        </svg>
+      )}
     </div>
   );
 }

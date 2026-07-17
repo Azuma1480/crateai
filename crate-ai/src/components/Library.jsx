@@ -7,7 +7,7 @@ const GENRES = [
   'Pop', 'Jazz', 'Disco', 'House', 'Lo-fi Hip-Hop',
 ];
 
-export default function Library({ libraryVersion }) {
+export default function Library({ libraryVersion, setNowPlaying }) {
   const [tracks, setTracks] = useState([]);
   const [query, setQuery] = useState('');
   const [genre, setGenre] = useState('All');

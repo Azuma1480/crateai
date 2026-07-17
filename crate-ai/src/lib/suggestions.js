@@ -8,21 +8,22 @@ import { areCamelotCompatible, camelotCompatibilityLabel, toCamelot } from './ca
 //
 // Returns top N tracks sorted by score, each with a reason string.
 
-export function getSuggestions(nowPlaying, library, limit = 5) {
+export function getSuggestions(nowPlaying, library, limit = 5, x2 = false) {
   if (!nowPlaying || library.length === 0) return [];
 
-  const nowCamelot = toCamelot(nowPlaying.key, nowPlaying.mode);
+  const nowCamelot = nowPlaying.camelotKey ?? toCamelot(nowPlaying.key, nowPlaying.mode);
   const nowBpm = nowPlaying.bpm;
   const nowGenre = nowPlaying.genre;
   const nowEnergy = nowPlaying.energy;
+  const bpmRange = x2 ? 0.16 : 0.08;
 
   const scored = library
-    .filter((t) => t.id !== nowPlaying.id) // exclude the track itself
+    .filter((t) => t.id !== nowPlaying.id)
     .map((track) => {
       let score = 0;
       const reasons = [];
 
-      const trackCamelot = toCamelot(track.key, track.mode);
+      const trackCamelot = track.camelotKey ?? toCamelot(track.key, track.mode);
 
       // ── Key compatibility (0–40 pts) ────────────────────────────────────
       const keyLabel = camelotCompatibilityLabel(nowCamelot, trackCamelot);
@@ -44,14 +45,16 @@ export function getSuggestions(nowPlaying, library, limit = 5) {
         if (bpmDiff < 1) {
           score += 30;
           reasons.push('Same BPM');
-        } else if (bpmPct <= 0.04) {
+        } else if (bpmPct <= bpmRange / 2) {
           score += 25;
           reasons.push(diffStr);
-        } else if (bpmPct <= 0.08) {
+        } else if (bpmPct <= bpmRange) {
           score += 15;
           reasons.push(diffStr);
+        } else {
+          // Outside range — exclude
+          return { track, score: -1, reasons };
         }
-        // Outside ±8% = 0 pts, no reason added
       }
 
       // ── Genre match (0–20 pts) ───────────────────────────────────────────
@@ -72,7 +75,7 @@ export function getSuggestions(nowPlaying, library, limit = 5) {
 
       return { track, score, reasons };
     })
-    .filter((s) => s.score > 0)
+    .filter((s) => s.score > 0 && s.score !== -1)
     .sort((a, b) => b.score - a.score)
     .slice(0, limit);
 

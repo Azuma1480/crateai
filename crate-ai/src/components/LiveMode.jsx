@@ -18,22 +18,47 @@ export default function LiveMode({
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
-  const [playHistory, setPlayHistory] = useState(new Set());
+  // Play history: { trackId → lastPlayedAt(ms) }. Persisted so a mid-set
+  // refresh doesn't forget what was played.
+  const [playHistory, setPlayHistory] = useState({});
+  const [clock, setClock] = useState(Date.now());
   const searchRef = useRef(null);
 
-  // Persist play history across reloads (one live set = one night; the
-  // history survives accidental refreshes mid-set).
   useEffect(() => {
     getSetting('playHistory').then((v) => {
-      if (v) { try { setPlayHistory(new Set(JSON.parse(v))); } catch { /* corrupt -> fresh */ } }
+      if (!v) return;
+      try {
+        const parsed = JSON.parse(v);
+        if (Array.isArray(parsed)) {
+          // legacy format (id array) — carry over with "just now" timestamps
+          setPlayHistory(Object.fromEntries(parsed.map((id) => [id, Date.now()])));
+        } else if (parsed && typeof parsed === 'object') {
+          setPlayHistory(parsed);
+        }
+      } catch { /* corrupt -> fresh */ }
     });
   }, []);
-  const markPlayed = (trackId) => {
+
+  // Tick every 30s so the elapsed-time badges stay current.
+  useEffect(() => {
+    const t = setInterval(() => setClock(Date.now()), 30000);
+    return () => clearInterval(t);
+  }, []);
+
+  // A track counts as played the moment it becomes the now-playing record,
+  // regardless of how it was selected (suggestion, search, or Library).
+  useEffect(() => {
+    if (!nowPlaying?.id) return;
     setPlayHistory((h) => {
-      const next = new Set([...h, trackId]);
-      setSetting('playHistory', JSON.stringify([...next]));
+      const next = { ...h, [nowPlaying.id]: Date.now() };
+      setSetting('playHistory', JSON.stringify(next));
       return next;
     });
+  }, [nowPlaying?.id]);
+
+  const resetHistory = () => {
+    setPlayHistory({});
+    setSetting('playHistory', '{}');
   };
 
   const loadLibrary = useCallback(async () => {
@@ -45,7 +70,7 @@ export default function LiveMode({
   useEffect(() => {
     if (!nowPlaying || library.length === 0) { setSuggestions([]); return; }
     const all = getSuggestions(nowPlaying, library, 12, x2On);
-    const filtered = includePlayed ? all : all.filter((t) => !playHistory.has(t.id));
+    const filtered = includePlayed ? all : all.filter((t) => !(t.id in playHistory));
     setSuggestions(filtered.slice(0, 8));
   }, [nowPlaying, library, x2On, includePlayed, playHistory]);
 
@@ -62,14 +87,12 @@ export default function LiveMode({
   }, [searchQuery, library]);
 
   const handleSelectNowPlaying = (track) => {
-    if (nowPlaying) markPlayed(nowPlaying.id);
     setNowPlaying(track);
     setShowSearch(false);
     setSearchQuery('');
   };
 
   const handleSelectSuggestion = (track) => {
-    if (nowPlaying) markPlayed(nowPlaying.id);
     setNowPlaying(track);
   };
 
@@ -169,6 +192,21 @@ export default function LiveMode({
         <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--text-dim)' }}>
           Next Suggestions
         </span>
+        <div className="flex items-center gap-3">
+        {Object.keys(playHistory).length > 0 && (
+          <button
+            onClick={resetHistory}
+            aria-label="プレイ履歴をリセット"
+            title="プレイ履歴をリセット"
+            className="flex items-center gap-1"
+            style={{ fontSize: 10, color: 'var(--text-dim)' }}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} style={{ width: 12, height: 12 }}>
+              <path d="M3 12a9 9 0 1 0 3-6.7" /><polyline points="3 4 3 9 8 9" />
+            </svg>
+            リセット
+          </button>
+        )}
         <button
           onClick={() => { setShowSearch((v) => !v); setTimeout(() => searchRef.current?.focus(), 50); }}
           className="flex items-center gap-1.5"
@@ -179,6 +217,7 @@ export default function LiveMode({
           </svg>
           {nowPlaying ? '曲を変える' : 'ライブラリを検索'}
         </button>
+        </div>
       </div>
 
       {/* ── SEARCH PANEL ─────────────────────────────────────────────────────── */}
@@ -243,6 +282,8 @@ export default function LiveMode({
             rank={i + 1}
             delta={buildDeltaRow(sug)}
             top={i === 0}
+            playedAt={playHistory[sug.id] ?? null}
+            now={clock}
             onSelect={handleSelectSuggestion}
           />
         ))}
@@ -468,7 +509,16 @@ function Transition({ label, from, to, delta, kind }) {
   );
 }
 
-function SuggestItem({ track, rank, delta, top, onSelect }) {
+// Elapsed time since last played, as HH:MM (hours:minutes, no seconds).
+function elapsedHHMM(playedAt, now) {
+  const mins = Math.max(0, Math.floor((now - playedAt) / 60000));
+  const h = Math.min(99, Math.floor(mins / 60));
+  const m = mins % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+function SuggestItem({ track, rank, delta, top, playedAt, now, onSelect }) {
+  const played = playedAt != null;
   return (
     <button
       onClick={() => onSelect(track)}
@@ -481,10 +531,20 @@ function SuggestItem({ track, rank, delta, top, onSelect }) {
     >
       {top && <span style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: 'linear-gradient(to bottom, var(--accent), var(--accent))', borderRadius: '0 2px 2px 0' }} />}
       <span style={{ fontSize: 11, fontWeight: 800, color: top ? 'var(--accent)' : 'rgba(200,160,70,0.28)', width: 12, textAlign: 'center', flexShrink: 0 }}>{rank}</span>
-      <ArtThumb track={track} size={40} />
+      <div className="relative flex-shrink-0">
+        <ArtThumb track={track} size={40} />
+        {played && (
+          <span
+            className="absolute inset-0 flex items-center justify-center rounded-md"
+            style={{ background: 'rgba(0,0,0,0.55)', fontSize: 10, fontWeight: 700, fontFamily: 'monospace', color: '#f2726b', letterSpacing: '0.02em' }}
+          >
+            {elapsedHHMM(playedAt, now)}
+          </span>
+        )}
+      </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center" style={{ gap: 7 }}>
-          <span className="truncate" style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', minWidth: 0 }}>{track.title}</span>
+          <span className="truncate" style={{ fontSize: 13, fontWeight: 600, color: played ? '#f2726b' : 'var(--text)', minWidth: 0 }}>{track.title}</span>
           {delta && (
             <>
               <Transition kind="bpm" from={delta.bpmFrom} to={delta.bpmTo} delta={delta.bpmDelta} />

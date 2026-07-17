@@ -180,7 +180,7 @@ export default function Settings({
           </Row>
           <Row label="プレイ履歴" sub="新しいセットを始めるときにリセット" last>
             <button
-              onClick={async () => { await setSetting('playHistory', '[]'); setSaveMsg('履歴をリセットしました'); setTimeout(() => setSaveMsg(''), 2000); }}
+              onClick={async () => { await setSetting('playHistory', '{}'); setSaveMsg('履歴をリセットしました'); setTimeout(() => setSaveMsg(''), 2000); }}
               className="rounded-lg px-3 py-1.5 text-xs font-semibold"
               style={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text-dim)' }}
             >

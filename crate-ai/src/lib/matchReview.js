@@ -11,6 +11,22 @@
 // new match agree — so the user can review every record side by side.
 
 import { searchDiscogs } from './discogs.js';
+import { itunesSearchAlbums } from './itunes.js';
+
+// Build a search function for matching. With a Discogs token, tries Discogs
+// first (best vinyl coverage) and falls back to iTunes; without a token,
+// iTunes alone — free, keyless, CORS-enabled, zero setup.
+export function makeSearcher(token) {
+  return async (query) => {
+    if (token) {
+      try {
+        const r = await searchDiscogs(query, token);
+        if (r && r.length > 0) return r;
+      } catch { /* CORS/network/token issue — fall through to iTunes */ }
+    }
+    return itunesSearchAlbums(query);
+  };
+}
 
 // Parse the old app's export (raw ca2_lib JSON). Accepts either the bare
 // array or { lib: [...] } (shape of the old Firebase sync doc).
@@ -107,15 +123,15 @@ export async function matchAlbumGroup(group, token, searchFn = searchDiscogs) {
   }
 }
 
-// Match all groups sequentially with a delay between requests
-// (Discogs allows 60 req/min authenticated — 1.1s keeps us under it).
-export async function matchAllAlbums(groups, token, onProgress, searchFn = searchDiscogs) {
+// Match all groups sequentially with a delay between requests.
+// Discogs allows 60 req/min authenticated (1.1s); iTunes ~20 req/min (3.2s).
+export async function matchAllAlbums(groups, token, onProgress, searchFn = searchDiscogs, delayMs = 1100) {
   const rows = [];
   for (let i = 0; i < groups.length; i++) {
     const row = await matchAlbumGroup(groups[i], token, searchFn);
     rows.push(row);
     onProgress?.({ done: i + 1, total: groups.length, row });
-    if (i < groups.length - 1) await new Promise((r) => setTimeout(r, 1100));
+    if (i < groups.length - 1) await new Promise((r) => setTimeout(r, delayMs));
   }
   return rows;
 }

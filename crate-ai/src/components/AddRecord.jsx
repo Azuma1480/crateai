@@ -4,7 +4,7 @@ import { searchSpotifyTrack } from '../lib/spotify.js';
 import { getSetting, saveAlbum, saveTracks } from '../lib/db.js';
 import { gradientFor } from '../lib/art.js';
 import { camelotToKeyMode } from '../lib/rekordbox.js';
-import { parseOldLibrary, groupAlbums, matchAllAlbums } from '../lib/matchReview.js';
+import { parseOldLibrary, groupAlbums, matchAllAlbums, makeSearcher } from '../lib/matchReview.js';
 import PhotoImport from './PhotoImport.jsx';
 
 export const CAMELOT_KEYS = [
@@ -431,12 +431,14 @@ function MatchReview({ onImportComplete }) {
     if (!groups?.length) return;
     setError(null); setRunning(true); setRows([]); setProgress({ done: 0, total: groups.length });
     try {
+      // Discogs when configured; otherwise iTunes — free, keyless, zero setup.
       const token = await getSetting('discogsToken');
-      if (!token) throw new Error('Discogsトークンが未設定です（Settings → Discogs）。CORS回避のためProxy URLも推奨。');
+      const searchFn = makeSearcher(token);
+      const delayMs = token ? 1100 : 3200;
       await matchAllAlbums(groups, token, (p) => {
         setProgress({ done: p.done, total: p.total });
         setRows((prev) => [...prev, p.row]);
-      });
+      }, searchFn, delayMs);
     } catch (err) {
       setError(err.message);
     } finally {

@@ -4,6 +4,7 @@ import { searchSpotifyTrack } from '../lib/spotify.js';
 import { getSetting, saveAlbum, saveTracks } from '../lib/db.js';
 import { gradientFor } from '../lib/art.js';
 import { camelotToKeyMode } from '../lib/rekordbox.js';
+import { parseOldLibrary, groupAlbums, matchAllAlbums } from '../lib/matchReview.js';
 import PhotoImport from './PhotoImport.jsx';
 
 export const CAMELOT_KEYS = [
@@ -179,7 +180,7 @@ export default function AddRecord({ onImportComplete }) {
         {step === 'search' && (
           <div className="flex flex-col gap-4">
             <div className="flex gap-1 rounded-xl p-1" style={{ background: 'var(--surface2)' }}>
-              {[['discogs', 'Discogs'], ['photo', 'Photo'], ['manual', 'Manual']].map(([m, label]) => (
+              {[['discogs', 'Discogs'], ['photo', 'Photo'], ['manual', 'Manual'], ['review', '照合']].map(([m, label]) => (
                 <button
                   key={m}
                   type="button"
@@ -194,6 +195,7 @@ export default function AddRecord({ onImportComplete }) {
 
             {mode === 'photo' && <PhotoImport onImportComplete={onImportComplete} />}
             {mode === 'manual' && <ManualAdd onImportComplete={onImportComplete} />}
+            {mode === 'review' && <MatchReview onImportComplete={onImportComplete} />}
             {mode === 'discogs' && (
               <form onSubmit={handleSearch} className="flex flex-col gap-4">
                 <div>
@@ -370,6 +372,199 @@ export default function AddRecord({ onImportComplete }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/* ── Match Review — verify the old photo-based library against the new
+      Discogs detection system, with a side-by-side result list ── */
+const VERDICT_META = {
+  match:    { label: '一致',     color: '#52d98a', bg: 'rgba(82,217,138,0.12)' },
+  unsure:   { label: '要確認',   color: '#e8a030', bg: 'rgba(232,160,48,0.12)' },
+  mismatch: { label: '不一致',   color: '#f2726b', bg: 'rgba(242,114,107,0.12)' },
+  notfound: { label: '未検出',   color: '#8a8a8a', bg: 'rgba(160,160,160,0.1)' },
+  error:    { label: 'エラー',   color: '#f2726b', bg: 'rgba(242,114,107,0.12)' },
+};
+
+function MatchReview({ onImportComplete }) {
+  const [rawText, setRawText] = useState('');
+  const [groups, setGroups] = useState(null);
+  const [rows, setRows] = useState([]);
+  const [running, setRunning] = useState(false);
+  const [progress, setProgress] = useState(null);
+  const [error, setError] = useState(null);
+  const [importedIds, setImportedIds] = useState(new Set());
+
+  const handleParse = (text) => {
+    setError(null); setRows([]);
+    try {
+      const tracks = parseOldLibrary(text);
+      setGroups(groupAlbums(tracks));
+    } catch (err) {
+      setGroups(null); setError(err.message);
+    }
+  };
+
+  const handleFile = async (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const text = await f.text();
+    setRawText(text);
+    handleParse(text);
+    e.target.value = '';
+  };
+
+  const handleRun = async () => {
+    if (!groups?.length) return;
+    setError(null); setRunning(true); setRows([]); setProgress({ done: 0, total: groups.length });
+    try {
+      const token = await getSetting('discogsToken');
+      if (!token) throw new Error('Discogsトークンが未設定です（Settings → Discogs）。CORS回避のためProxy URLも推奨。');
+      await matchAllAlbums(groups, token, (p) => {
+        setProgress({ done: p.done, total: p.total });
+        setRows((prev) => [...prev, p.row]);
+      });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const handleImportRow = async (row, idx) => {
+    const g = row.group;
+    const cover = row.candidate?.cover || g.photo || null;
+    const year = row.candidate?.year ? Number(row.candidate.year) : null;
+    const albumId = `mr_${`${g.artist}_${g.album}`.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '_')}`;
+    const tracks = g.tracks.map((t, i) => ({
+      id: `${albumId}_${t.position || i + 1}_${(t.title || '').toLowerCase().replace(/\s+/g, '_')}`,
+      albumId,
+      title: t.title || g.album,
+      artist: t.artist || g.artist,
+      album: g.album || null,
+      year,
+      genre: t.genre || null,
+      bpm: t.bpm ?? null,
+      key: t.key ?? null,
+      mode: t.mode ?? null,
+      camelotKey: null,
+      position: t.position || String(i + 1),
+      cover,
+      source: 'match-review',
+    }));
+    await saveTracks(tracks);
+    setImportedIds((prev) => new Set([...prev, idx]));
+    onImportComplete?.();
+  };
+
+  const counts = rows.reduce((a, r) => { a[r.verdict] = (a[r.verdict] || 0) + 1; return a; }, {});
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="rounded-xl p-4" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        <p className="font-semibold" style={{ color: 'var(--text)', fontSize: 14 }}>旧ライブラリ照合</p>
+        <p style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 4, lineHeight: 1.6 }}>
+          旧アプリ（写真ベース）のライブラリを、新しいDiscogs検出システムで照合し、結果を一覧で確認できます。
+          旧アプリを開いた端末のブラウザで F12 → Console →
+          <code style={{ color: 'var(--accent)' }}> copy(localStorage.getItem('ca2_lib')) </code>
+          を実行してコピーし、下に貼り付けてください（またはJSONファイルを選択）。
+        </p>
+        <textarea
+          value={rawText}
+          onChange={(e) => { setRawText(e.target.value); handleParse(e.target.value); }}
+          placeholder='[{"title":"...","artist":"...","album":"...","photo":"https://..."}]'
+          rows={4}
+          className="w-full rounded-xl px-3 py-2.5 mt-3 text-xs font-mono resize-none outline-none"
+          style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)' }}
+        />
+        <div className="flex gap-2 mt-2">
+          <label className="flex-1">
+            <input type="file" accept="application/json,.json,.txt" onChange={handleFile} className="hidden" />
+            <span className="w-full flex items-center justify-center rounded-xl px-3 py-2.5 text-sm font-medium"
+              style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)' }}>
+              JSONファイルを選択
+            </span>
+          </label>
+          <button
+            onClick={handleRun}
+            disabled={!groups?.length || running}
+            className="flex-1 rounded-xl px-3 py-2.5 text-sm font-semibold disabled:opacity-50"
+            style={{ background: groups?.length ? 'var(--accent)' : 'var(--surface2)', color: groups?.length ? 'var(--bg)' : 'var(--text-muted)' }}
+          >
+            {running
+              ? `照合中… ${progress?.done}/${progress?.total}`
+              : groups?.length ? `${groups.length}枚を照合開始` : '照合開始'}
+          </button>
+        </div>
+        {groups && !running && rows.length === 0 && (
+          <p style={{ fontSize: 11, color: '#52d98a', marginTop: 8 }}>
+            ✓ {groups.reduce((n, g) => n + g.tracks.length, 0)}曲 / {groups.length}枚のアルバムを読み込みました
+          </p>
+        )}
+        {error && <p style={{ fontSize: 11, color: '#f2726b', marginTop: 8 }}>{error}</p>}
+      </div>
+
+      {rows.length > 0 && (
+        <div className="flex gap-2 flex-wrap">
+          {Object.entries(counts).map(([v, n]) => (
+            <span key={v} className="rounded-full px-3 py-1" style={{ fontSize: 11, fontWeight: 700, color: VERDICT_META[v].color, background: VERDICT_META[v].bg }}>
+              {VERDICT_META[v].label} {n}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {rows.map((row, idx) => {
+        const meta = VERDICT_META[row.verdict];
+        const done = importedIds.has(idx);
+        return (
+          <div key={idx} className="rounded-xl p-3" style={{ background: 'var(--surface)', border: `1px solid ${row.verdict === 'match' ? 'rgba(82,217,138,0.3)' : 'var(--border)'}` }}>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="rounded-full px-2 py-0.5" style={{ fontSize: 10, fontWeight: 700, color: meta.color, background: meta.bg }}>{meta.label}</span>
+              {row.candidate && <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>類似度 {(row.score * 100).toFixed(0)}%</span>}
+            </div>
+            <div className="flex gap-3 items-start">
+              {/* old (photo-based) identification */}
+              <div className="flex-1 min-w-0">
+                <p style={{ fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.1em', marginBottom: 4 }}>旧ライブラリ</p>
+                <div className="flex gap-2">
+                  <Thumb src={row.group.photo} seed={row.group} size={52} />
+                  <div className="min-w-0">
+                    <p className="line-clamp-2" style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', lineHeight: 1.25 }}>{row.group.album}</p>
+                    <p className="truncate" style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 2 }}>{row.group.artist}</p>
+                    <p style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 2 }}>{row.group.tracks.length}曲</p>
+                  </div>
+                </div>
+              </div>
+              {/* arrow */}
+              <div style={{ color: 'var(--text-muted)', paddingTop: 24 }}>→</div>
+              {/* new (Discogs) match */}
+              <div className="flex-1 min-w-0">
+                <p style={{ fontSize: 9, color: 'var(--text-muted)', letterSpacing: '0.1em', marginBottom: 4 }}>Discogs照合結果</p>
+                {row.candidate ? (
+                  <div className="flex gap-2">
+                    <Thumb src={row.candidate.thumb || row.candidate.cover} seed={row.candidate} size={52} />
+                    <div className="min-w-0">
+                      <p className="line-clamp-2" style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', lineHeight: 1.25 }}>{row.candidate.title}</p>
+                      <p style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 2 }}>{row.candidate.year || '—'}{row.candidate.format ? ` · ${row.candidate.format}` : ''}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <p style={{ fontSize: 11, color: 'var(--text-dim)' }}>{row.error || '該当なし'}</p>
+                )}
+              </div>
+            </div>
+            <button
+              onClick={() => handleImportRow(row, idx)}
+              disabled={done}
+              className="w-full mt-3 rounded-lg py-2 text-xs font-semibold disabled:opacity-60"
+              style={{ background: done ? 'var(--surface2)' : 'var(--accent-dim)', border: `1px solid ${done ? 'var(--border)' : 'var(--accent)'}`, color: done ? 'var(--text-dim)' : 'var(--accent)' }}
+            >
+              {done ? '✓ 取り込み済み' : row.candidate ? 'この結果で新ライブラリに取り込む' : '旧データのまま取り込む'}
+            </button>
+          </div>
+        );
+      })}
     </div>
   );
 }

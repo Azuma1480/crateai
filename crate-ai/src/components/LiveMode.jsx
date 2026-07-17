@@ -304,6 +304,19 @@ function TurntableCanvas({ nowPlaying }) {
   const canvasRef = useRef(null);
   const artRef = useRef(null);     // { placeholder: canvas, img: HTMLImageElement|null }
   const rafRef = useRef(null);
+  // Render at the element's real width (2x for retina) so circles stay
+  // circular on any device width instead of stretching a fixed design.
+  const [cssW, setCssW] = useState(390);
+
+  useEffect(() => {
+    const measure = () => {
+      const w = canvasRef.current?.clientWidth;
+      if (w) setCssW(w);
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, []);
 
   // Build / refresh the center-label artwork whenever the track changes.
   useEffect(() => {
@@ -455,12 +468,12 @@ function TurntableCanvas({ nowPlaying }) {
     };
     rafRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(rafRef.current);
-  }, []);
+  }, [cssW]);
 
   return (
     <canvas
       ref={canvasRef}
-      width={780}
+      width={Math.round(cssW * 2)}
       height={438}
       style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: 219 }}
     />

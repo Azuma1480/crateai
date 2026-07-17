@@ -53,6 +53,12 @@ html, body, #root {
   overflow: hidden;
 }
 
+/* Fill the real (dynamic) viewport on mobile browsers — keeps the app
+   truly full-screen on iPhone even when Safari's bars collapse. */
+@supports (height: 100dvh) {
+  html, body, #root { height: 100dvh; }
+}
+
 /* Constrain the app to a phone (iPhone 11 · 414×896) and center it.
    On a real phone it fills the screen; on wider/taller displays it stays
    phone-shaped instead of stretching to the full window. */
@@ -62,15 +68,16 @@ html, body, #root {
   align-items: stretch;
   background: #000;
 }
+/* On phones the app fills the entire screen (no frame, no cap). */
 #root > * {
   width: 100%;
-  max-width: 414px;
   height: 100%;
 }
+/* On desktop-sized windows, present it as an iPhone 11 frame instead. */
 @media (min-width: 460px) {
   #root { align-items: center; padding: 20px; }
   #root > * {
-    height: 100%;
+    max-width: 414px;
     max-height: 896px;
     border-radius: 44px;
     overflow: hidden;

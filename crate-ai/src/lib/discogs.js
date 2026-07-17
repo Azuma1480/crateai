@@ -11,11 +11,22 @@ import { getSetting } from './db.js';
 
 const BASE = 'https://api.discogs.com';
 
+// Build-time defaults (injected from GitHub Actions secrets at deploy).
+// A value saved in Settings always wins over these.
+const ENV_TOKEN = import.meta.env.VITE_DISCOGS_TOKEN || null;
+const ENV_PROXY = import.meta.env.VITE_DISCOGS_PROXY || null;
+
+// Resolve the effective token: Settings first, then the built-in default.
+export async function getDiscogsToken() {
+  return (await getSetting('discogsToken')) || ENV_TOKEN;
+}
+
 async function discogsGet(path, token) {
-  const proxy = (await getSetting('discogsProxy'))?.trim()?.replace(/\/+$/, '');
+  const tok = token || ENV_TOKEN;
+  const proxy = ((await getSetting('discogsProxy')) || ENV_PROXY || '').trim().replace(/\/+$/, '');
   const url = proxy ? `${proxy}${path}` : `${BASE}${path}`;
   const res = await fetch(url, {
-    headers: { Authorization: `Discogs token=${token}` },
+    headers: { Authorization: `Discogs token=${tok}` },
   });
   if (!res.ok) {
     const text = await res.text();

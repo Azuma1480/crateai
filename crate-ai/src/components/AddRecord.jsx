@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { searchDiscogs, getRelease } from '../lib/discogs.js';
+import { searchDiscogs, getRelease, getDiscogsToken } from '../lib/discogs.js';
 import { searchSpotifyTrack } from '../lib/spotify.js';
 import { getSetting, saveAlbum, saveTracks } from '../lib/db.js';
 import { gradientFor } from '../lib/art.js';
@@ -49,7 +49,7 @@ export default function AddRecord({ onImportComplete }) {
     setError(null);
     setSearching(true);
     try {
-      const token = await getSetting('discogsToken');
+      const token = await getDiscogsToken();
       if (!token) throw new Error('Discogs token not set. Go to Settings.');
       const results = await searchDiscogs(query.trim(), token);
       setSearchResults(results);
@@ -66,7 +66,7 @@ export default function AddRecord({ onImportComplete }) {
     setLoadingRelease(true);
     setError(null);
     try {
-      const token = await getSetting('discogsToken');
+      const token = await getDiscogsToken();
       const detail = await getRelease(release.id, token);
       setReleaseDetail(detail);
       setStep('tracklist');
@@ -432,7 +432,7 @@ function MatchReview({ onImportComplete }) {
     setError(null); setRunning(true); setRows([]); setProgress({ done: 0, total: groups.length });
     try {
       // Discogs when configured; otherwise iTunes — free, keyless, zero setup.
-      const token = await getSetting('discogsToken');
+      const token = await getDiscogsToken();
       const searchFn = makeSearcher(token);
       const delayMs = token ? 1100 : 3200;
       await matchAllAlbums(groups, token, (p) => {

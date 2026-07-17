@@ -32,6 +32,14 @@ jobs:
       - name: Build
         working-directory: crate-ai
         run: npm run build
+        env:
+          # Optional deploy-time defaults. Set these in the repo:
+          # Settings → Secrets and variables → Actions → New repository secret
+          #   DISCOGS_TOKEN  — Discogs Personal Access Token
+          #   DISCOGS_PROXY  — e.g. http://192.168.x.x:8722 (optional)
+          # A value saved in the app's Settings screen always overrides these.
+          VITE_DISCOGS_TOKEN: ${{ secrets.DISCOGS_TOKEN }}
+          VITE_DISCOGS_PROXY: ${{ secrets.DISCOGS_PROXY }}
       - name: Prepare Claude UI site
         run: |
           mkdir -p site

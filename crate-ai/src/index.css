@@ -93,6 +93,9 @@ body {
 
 /* Scroll */
 .scroll-area { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+/* In a column-flex scroll container, children must not shrink — otherwise
+   overflowing content compresses (sections overlap) instead of scrolling. */
+.scroll-area > * { flex-shrink: 0; }
 .scroll-area::-webkit-scrollbar { width: 3px; }
 .scroll-area::-webkit-scrollbar-track { background: transparent; }
 .scroll-area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { searchDiscogs, getRelease, getDiscogsToken } from '../lib/discogs.js';
-import { searchSpotifyTrack } from '../lib/spotify.js';
-import { getSetting, saveAlbum, saveTracks } from '../lib/db.js';
+import { deezerTrackInfo } from '../lib/deezer.js';
+import { getSetting, saveAlbum, saveTracks, getAllTracks, getTrack } from '../lib/db.js';
 import { gradientFor } from '../lib/art.js';
 import { camelotToKeyMode } from '../lib/rekordbox.js';
 import { parseOldLibrary, groupAlbums, matchAllAlbums, makeSearcher } from '../lib/matchReview.js';
@@ -81,12 +81,26 @@ export default function AddRecord({ onImportComplete }) {
 
   const handleImport = async () => {
     if (!releaseDetail) return;
+
+    // Duplicate check — confirm before re-importing a record that is
+    // already in the library (matched by release id or artist+album name).
+    const existing = await getAllTracks();
+    const dup = existing.some((t) =>
+      t.albumId === String(releaseDetail.id) ||
+      ((t.album || '').toLowerCase() === (releaseDetail.title || '').toLowerCase() &&
+       (t.artist || '').toLowerCase() === (releaseDetail.artist || '').toLowerCase())
+    );
+    if (dup && !window.confirm(`「${releaseDetail.title}」は既にライブラリにあります。\nもう一度取り込みますか？（既存の曲は上書きされます）`)) {
+      return;
+    }
+
     setStep('importing');
     setError(null);
 
     try {
-      const clientId = await getSetting('spotifyClientId');
-      const clientSecret = await getSetting('spotifyClientSecret');
+      // Genre: user's choice first, otherwise auto-filled from the Discogs
+      // release (style is more specific than genre, so prefer it).
+      const autoGenre = selectedGenre || releaseDetail.styles?.[0] || releaseDetail.genres?.[0] || null;
 
       const tracksRaw = releaseDetail.tracklist.map((t) => ({
         id: makeTrackId(releaseDetail.id, t.position, t.title),
@@ -94,37 +108,28 @@ export default function AddRecord({ onImportComplete }) {
         title: t.title,
         artist: t.artist,
         album: releaseDetail.title,
+        year: releaseDetail.year ?? null,
         cover: releaseDetail.cover,
-        genre: selectedGenre || null,
+        genre: autoGenre,
         position: t.position,
         duration: t.duration,
       }));
 
-      let enrichedTracks = tracksRaw;
-
-      if (clientId && clientSecret) {
-        setImportProgress({ done: 0, total: tracksRaw.length });
-        const enriched = [];
-        for (let i = 0; i < tracksRaw.length; i++) {
-          const t = tracksRaw[i];
-          try {
-            const features = await searchSpotifyTrack(t.title, t.artist, clientId, clientSecret);
-            enriched.push({
-              ...t,
-              bpm: features?.bpm ?? null,
-              key: features?.key ?? null,
-              mode: features?.mode ?? null,
-              energy: features?.energy ?? null,
-              danceability: features?.danceability ?? null,
-              spotifyId: features?.spotifyId ?? null,
-            });
-          } catch {
-            enriched.push(t);
-          }
-          setImportProgress({ done: i + 1, total: tracksRaw.length });
-          await new Promise((r) => setTimeout(r, 100));
-        }
-        enrichedTracks = enriched;
+      // BPM auto-lookup per track via Deezer (free, keyless, JSONP).
+      // Deezer has no key data — key comes from Rekordbox import or manual
+      // entry / the track editor afterwards.
+      setImportProgress({ done: 0, total: tracksRaw.length });
+      const enrichedTracks = [];
+      for (let i = 0; i < tracksRaw.length; i++) {
+        const t = tracksRaw[i];
+        let bpm = null;
+        try {
+          const info = await deezerTrackInfo(t.title, t.artist);
+          bpm = info?.bpm ?? null;
+        } catch { /* offline / not found — leave null */ }
+        enrichedTracks.push({ ...t, bpm, key: null, mode: null, camelotKey: null });
+        setImportProgress({ done: i + 1, total: tracksRaw.length });
+        await new Promise((r) => setTimeout(r, 250));
       }
 
       await saveAlbum({
@@ -343,8 +348,8 @@ export default function AddRecord({ onImportComplete }) {
               </div>
             </div>
             <div className="text-center">
-              <p style={{ color: 'var(--text)', fontWeight: 500 }}>Fetching BPM &amp; key</p>
-              <p style={{ color: 'var(--text-dim)', fontSize: 13, marginTop: 4 }}>Searching Spotify for each track…</p>
+              <p style={{ color: 'var(--text)', fontWeight: 500 }}>Fetching BPM</p>
+              <p style={{ color: 'var(--text-dim)', fontSize: 13, marginTop: 4 }}>各曲のBPMをDeezerで検索中…（キーは後からRekordbox取込か編集で）</p>
             </div>
             {importProgress.total > 0 && (
               <div className="w-full rounded-full h-1.5" style={{ background: 'var(--surface2)' }}>
@@ -598,11 +603,21 @@ function MatchReview({ onImportComplete }) {
 /* ── Manual single-track entry — no APIs, guaranteed to work offline ── */
 function ManualAdd({ onImportComplete }) {
   const [form, setForm] = useState({ title: '', artist: '', album: '', year: '', bpm: '', camelotKey: '', genre: '' });
+  const [cover, setCover] = useState(null); // dataURL of uploaded jacket art
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
 
   const set = (k, v) => { setForm((p) => ({ ...p, [k]: v })); setMsg(''); };
   const canSave = form.title.trim() && form.artist.trim();
+
+  const handleCover = (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => setCover(reader.result);
+    reader.readAsDataURL(f);
+    e.target.value = '';
+  };
 
   const handleSave = async () => {
     if (!canSave) return;
@@ -610,6 +625,12 @@ function ManualAdd({ onImportComplete }) {
     try {
       const { key, mode } = form.camelotKey ? camelotToKeyMode(form.camelotKey) : { key: null, mode: null };
       const id = `manual_${`${form.artist}_${form.title}`.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/\s+/g, '_')}`;
+      // Duplicate check — same artist+title already registered
+      const existing = await getTrack(id);
+      if (existing && !window.confirm(`「${form.title.trim()}」は既にライブラリにあります。\n上書きしますか？`)) {
+        setSaving(false);
+        return;
+      }
       await saveTracks([{
         id,
         albumId: null,
@@ -621,11 +642,12 @@ function ManualAdd({ onImportComplete }) {
         bpm: form.bpm ? Math.round(Number(form.bpm)) : null,
         camelotKey: form.camelotKey || null,
         key, mode,
-        cover: null,
+        cover,
         source: 'manual',
       }]);
       setMsg(`✓ 「${form.title.trim()}」を登録しました`);
       setForm({ title: '', artist: '', album: '', year: '', bpm: '', camelotKey: '', genre: '' });
+      setCover(null);
       onImportComplete?.();
     } catch (err) {
       setMsg(`エラー: ${err.message}`);
@@ -656,6 +678,28 @@ function ManualAdd({ onImportComplete }) {
       <p style={{ fontSize: 11, color: 'var(--text-dim)' }}>
         1曲を直接登録します。BPMとキーはサジェストに必要です（後からLibraryで編集もできます）。
       </p>
+      {/* Album art upload (camera or gallery — no capture attr, so the OS asks) */}
+      <div className="flex items-center gap-3">
+        <div
+          className="flex-shrink-0 rounded-lg overflow-hidden flex items-center justify-center"
+          style={{ width: 56, height: 56, background: cover ? 'var(--surface2)' : gradientFor(form), border: '1px solid var(--border)' }}
+        >
+          {cover && <img src={cover} alt="jacket" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+        </div>
+        <label className="flex-1">
+          <input type="file" accept="image/*" onChange={handleCover} className="hidden" />
+          <span className="w-full flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium"
+            style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)' }}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+              <rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="m21 15-5-5L5 21" />
+            </svg>
+            {cover ? 'ジャケット画像を変更' : 'ジャケット画像を追加'}
+          </span>
+        </label>
+        {cover && (
+          <button onClick={() => setCover(null)} style={{ color: 'var(--text-dim)', fontSize: 12 }} aria-label="Remove cover">✕</button>
+        )}
+      </div>
       {field('Track title *', 'title', { placeholder: 'e.g. Stay With Me' })}
       {field('Artist *', 'artist', { placeholder: 'e.g. Miki Matsubara' })}
       {field('Album', 'album', { placeholder: 'e.g. Pocket Park' })}

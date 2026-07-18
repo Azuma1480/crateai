@@ -166,10 +166,11 @@ export default function PhotoImport({ onImportComplete }) {
         </div>
 
         <label className="block">
+          {/* No `capture` attribute — the OS asks whether to use the camera
+              or pick from the photo library. */}
           <input
             type="file"
             accept="image/*"
-            capture="environment"
             multiple
             onChange={handlePhotos}
             className="hidden"

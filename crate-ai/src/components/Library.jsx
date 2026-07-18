@@ -93,6 +93,14 @@ export default function Library({ libraryVersion, setNowPlaying, keyFormat = 'ca
     setExpandedId(null);
   };
 
+  // User rating: 1-5 stars; tapping the current value clears it.
+  const handleSetRating = async (track, rating) => {
+    const next = track.rating === rating ? null : rating;
+    const updated = { ...track, rating: next };
+    await saveTrack(updated);
+    setTracks((prev) => prev.map((x) => (x.id === track.id ? updated : x)));
+  };
+
   const displayKey = (track) => {
     const cam = track.camelotKey ?? toCamelot(track.key, track.mode);
     if (!cam) return null;
@@ -106,7 +114,7 @@ export default function Library({ libraryVersion, setNowPlaying, keyFormat = 'ca
     setView(v); setAlbumSel(null); setArtistSel(null); setExpandedId(null); setDir('asc');
   };
 
-  const rowProps = { nowPlaying, setNowPlaying, expandedId, setExpandedId, displayKey, handleGenreChange, handleSaveEdit, handleDelete };
+  const rowProps = { nowPlaying, setNowPlaying, expandedId, setExpandedId, displayKey, handleGenreChange, handleSaveEdit, handleDelete, handleSetRating };
 
   return (
     <div className="flex flex-col h-full transition-colors duration-500" style={{ background: 'var(--bg)' }}>
@@ -295,6 +303,11 @@ function TrackRow({ track, compact, ...p }) {
             <span style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--accent)', fontVariantNumeric: 'tabular-nums' }}>{track.bpm}</span>
           )}
           {keyDisp && <span style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--text-dim)' }}>{keyDisp}</span>}
+          {track.rating > 0 && (
+            <span style={{ fontSize: 9, color: '#f0b040', letterSpacing: 1 }}>
+              {'★'.repeat(track.rating)}
+            </span>
+          )}
           {isPlaying && (
             <span style={{ fontSize: 9, color: 'var(--accent)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Playing</span>
           )}
@@ -307,6 +320,7 @@ function TrackRow({ track, compact, ...p }) {
           onGenreChange={p.handleGenreChange}
           onSaveEdit={p.handleSaveEdit}
           onDelete={p.handleDelete}
+          onSetRating={p.handleSetRating}
         />
       )}
     </div>
@@ -487,7 +501,7 @@ function SectionHeader({ label }) {
 
 /* ── Expanded panel (play / genre / edit / delete) ──────────────────────────── */
 
-function ExpandedPanel({ track, setNowPlaying, onGenreChange, onSaveEdit, onDelete }) {
+function ExpandedPanel({ track, setNowPlaying, onGenreChange, onSaveEdit, onDelete, onSetRating }) {
   const t = useT();
   const [editing, setEditing] = useState(false);
   const [edits, setEdits] = useState({
@@ -574,7 +588,27 @@ function ExpandedPanel({ track, setNowPlaying, onGenreChange, onSaveEdit, onDele
   }
 
   return (
-    <div className="px-3 pb-3 flex gap-2 items-center" style={{ borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+    <div className="px-3 pb-3 flex flex-col gap-2" style={{ borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+      {/* User rating — tap a star; tap the same star again to clear */}
+      {onSetRating && (
+        <div className="flex items-center gap-1.5">
+          <span style={{ fontSize: 10, color: 'var(--text-dim)', marginRight: 4 }}>Rate</span>
+          {[1, 2, 3, 4, 5].map((n) => (
+            <button
+              key={n}
+              onClick={() => onSetRating(track, n)}
+              aria-label={`Rate ${n}`}
+              style={{ fontSize: 20, lineHeight: 1, color: (track.rating || 0) >= n ? '#f0b040' : 'var(--text-muted)', padding: '0 2px' }}
+            >
+              {(track.rating || 0) >= n ? '★' : '☆'}
+            </button>
+          ))}
+          {track.rating > 0 && (
+            <span style={{ fontSize: 10, color: 'var(--text-dim)', marginLeft: 4 }}>{track.rating}/5</span>
+          )}
+        </div>
+      )}
+      <div className="flex gap-2 items-center">
       {setNowPlaying && (
         <button
           onClick={() => setNowPlaying(track)}
@@ -617,6 +651,7 @@ function ExpandedPanel({ track, setNowPlaying, onGenreChange, onSaveEdit, onDele
           <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
         </svg>
       </button>
+      </div>
     </div>
   );
 }

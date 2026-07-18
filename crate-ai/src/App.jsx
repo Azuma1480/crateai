@@ -6,6 +6,7 @@ import AddRecord from './components/AddRecord.jsx';
 import Settings from './components/Settings.jsx';
 import SpeedStreaks from './components/SpeedStreaks.jsx';
 import { getSetting, setSetting } from './lib/db.js';
+import { I18nContext } from './lib/i18n.js';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('live');
@@ -17,6 +18,7 @@ export default function App() {
   const [x2On, setX2On] = useState(false);
   const [keyFormat, setKeyFormat] = useState('camelot'); // 'camelot' | 'musical'
   const [includePlayed, setIncludePlayed] = useState(true);
+  const [lang, setLang] = useState('ja'); // 'ja' | 'en'
 
   const bumpLibrary = () => setLibraryVersion((v) => v + 1);
 
@@ -24,7 +26,13 @@ export default function App() {
   useEffect(() => {
     getSetting('keyFormat').then((v) => v && setKeyFormat(v));
     getSetting('includePlayed').then((v) => v != null && setIncludePlayed(v === 'true'));
+    getSetting('lang').then((v) => v && setLang(v));
   }, []);
+
+  const handleLang = (val) => {
+    setLang(val);
+    setSetting('lang', val);
+  };
 
   const handleKam = (val) => {
     setKamOn(val);
@@ -43,6 +51,7 @@ export default function App() {
   };
 
   return (
+    <I18nContext.Provider value={lang}>
     <div
       className="flex flex-col h-full transition-colors duration-500"
       style={{ background: 'var(--bg)', color: 'var(--text)' }}
@@ -90,6 +99,8 @@ export default function App() {
             setX2On={setX2On}
             includePlayed={includePlayed}
             setIncludePlayed={handleIncludePlayed}
+            lang={lang}
+            setLang={handleLang}
           />
         )}
       </div>
@@ -97,5 +108,6 @@ export default function App() {
       <NavBar activeTab={activeTab} onTabChange={setActiveTab} />
       <div className="safe-bottom" style={{ background: 'var(--nav-bg)' }} />
     </div>
+    </I18nContext.Provider>
   );
 }

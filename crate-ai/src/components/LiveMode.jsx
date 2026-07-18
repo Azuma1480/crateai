@@ -5,6 +5,7 @@ import { toCamelot, keyName } from '../lib/camelot.js';
 import { pitchPercent, shiftKeyByPitch, camelotDelta } from '../lib/kam.js';
 import { gradientFor, buildAlbumArt } from '../lib/art.js';
 import { camelotToKeyMode } from '../lib/rekordbox.js';
+import { useT } from '../lib/i18n.js';
 
 export default function LiveMode({
   nowPlaying, setNowPlaying,
@@ -14,6 +15,7 @@ export default function LiveMode({
   keyFormat,
   includePlayed,
 }) {
+  const t = useT();
   const [library, setLibrary] = useState([]);
   const [suggestions, setSuggestions] = useState([]);
   const [showSearch, setShowSearch] = useState(false);
@@ -182,7 +184,7 @@ export default function LiveMode({
         ) : (
           <div style={{ position: 'absolute', left: 20, right: 16, top: 150, zIndex: 9 }}>
             <p style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'var(--accent)', marginBottom: 4 }}>Now Playing</p>
-            <p style={{ fontSize: 15, color: '#fbeecb', textShadow: '0 2px 8px rgba(0,0,0,0.9)' }}>ライブラリから曲を選んでスタート</p>
+            <p style={{ fontSize: 15, color: '#fbeecb', textShadow: '0 2px 8px rgba(0,0,0,0.9)' }}>{t('startPrompt')}</p>
           </div>
         )}
       </div>
@@ -210,7 +212,7 @@ export default function LiveMode({
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} style={{ width: 12, height: 12 }}>
               <path d="M3 12a9 9 0 1 0 3-6.7" /><polyline points="3 4 3 9 8 9" />
             </svg>
-            リセット
+            {t('reset')}
           </button>
         )}
         <button
@@ -221,7 +223,7 @@ export default function LiveMode({
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} style={{ width: 13, height: 13 }}>
             <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
           </svg>
-          {nowPlaying ? '曲を変える' : 'ライブラリを検索'}
+          {nowPlaying ? t('changeTrack') : t('searchLibrary')}
         </button>
         </div>
       </div>
@@ -233,17 +235,17 @@ export default function LiveMode({
             <input
               ref={searchRef}
               type="search"
-              placeholder="検索…"
+              placeholder={t('searchPh')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="flex-1 rounded-xl px-3 py-2 text-sm outline-none"
               style={{ background: 'var(--bg)', border: '1px solid var(--border)', color: 'var(--text)' }}
             />
-            <button onClick={() => { setShowSearch(false); setSearchQuery(''); }} style={{ color: 'var(--text-dim)', fontSize: 12 }}>キャンセル</button>
+            <button onClick={() => { setShowSearch(false); setSearchQuery(''); }} style={{ color: 'var(--text-dim)', fontSize: 12 }}>{t('cancel')}</button>
           </div>
           <div style={{ maxHeight: 200, overflowY: 'auto' }}>
             {searchQuery.length >= 2 && searchResults.length === 0 && (
-              <p className="px-4 py-3" style={{ fontSize: 13, color: 'var(--text-dim)' }}>見つからない</p>
+              <p className="px-4 py-3" style={{ fontSize: 13, color: 'var(--text-dim)' }}>{t('notFound')}</p>
             )}
             {searchResults.map((t) => (
               <button
@@ -268,17 +270,17 @@ export default function LiveMode({
       <div className="flex-1 scroll-area">
         {!nowPlaying && (
           <p className="text-center py-8" style={{ fontSize: 13, color: 'var(--text-dim)' }}>
-            曲をセットするとサジェストが表示される
+            {t('setPrompt')}
           </p>
         )}
         {nowPlaying && suggestions.length === 0 && library.length > 0 && (
           <p className="text-center py-8" style={{ fontSize: 13, color: 'var(--text-dim)' }}>
-            範囲内の曲なし — X2を試してみて
+            {t('noneInRange')}
           </p>
         )}
         {nowPlaying && library.length === 0 && (
           <p className="text-center py-8" style={{ fontSize: 13, color: 'var(--text-dim)' }}>
-            ライブラリが空 — Settingsからインポート
+            {t('emptyLibLive')}
           </p>
         )}
         {suggestions.map((sug, i) => (

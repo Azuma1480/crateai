@@ -4,6 +4,7 @@ import { toCamelot, keyName } from '../lib/camelot.js';
 import { gradientFor } from '../lib/art.js';
 import { camelotToKeyMode } from '../lib/rekordbox.js';
 import { CAMELOT_KEYS } from './AddRecord.jsx';
+import { useT } from '../lib/i18n.js';
 
 const GENRES = [
   'All', 'R&B', 'Korean Indie', 'Japanese City Pop', 'Funk', 'Hip-Hop',
@@ -31,6 +32,7 @@ function posParts(pos) {
 }
 
 export default function Library({ libraryVersion, setNowPlaying, keyFormat = 'camelot', nowPlaying, onAddRecord }) {
+  const t = useT();
   const [tracks, setTracks] = useState([]);
   const [query, setQuery] = useState('');
   const [genre, setGenre] = useState('All');
@@ -85,7 +87,7 @@ export default function Library({ libraryVersion, setNowPlaying, keyFormat = 'ca
   };
 
   const handleDelete = async (track) => {
-    if (!window.confirm(`「${track.title}」を削除しますか？`)) return;
+    if (!window.confirm(t('deleteConfirm', track.title))) return;
     await deleteTrack(track.id);
     setTracks((prev) => prev.filter((t) => t.id !== track.id));
     setExpandedId(null);
@@ -124,7 +126,7 @@ export default function Library({ libraryVersion, setNowPlaying, keyFormat = 'ca
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} style={{ width: 13, height: 13 }}>
                 <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
               </svg>
-              登録
+              {t('register')}
             </button>
           )}
         </div>
@@ -200,7 +202,7 @@ export default function Library({ libraryVersion, setNowPlaying, keyFormat = 'ca
             style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)', background: 'var(--accent-dim)', border: '1px solid var(--accent)' }}
           >
             {view === 'bpm'
-              ? (dir === 'asc' ? '遅い → 速い' : '速い → 遅い')
+              ? (dir === 'asc' ? t('slowToFast') : t('fastToSlow'))
               : (dir === 'asc' ? '1A → 12B' : '12B → 1A')}
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} style={{ width: 11, height: 11 }}>
               {dir === 'asc' ? <path d="M12 19V5m-6 6 6-6 6 6" /> : <path d="M12 5v14m6-6-6 6-6-6" />}
@@ -486,6 +488,7 @@ function SectionHeader({ label }) {
 /* ── Expanded panel (play / genre / edit / delete) ──────────────────────────── */
 
 function ExpandedPanel({ track, setNowPlaying, onGenreChange, onSaveEdit, onDelete }) {
+  const t = useT();
   const [editing, setEditing] = useState(false);
   const [edits, setEdits] = useState({
     bpm: track.bpm ?? '',
@@ -556,14 +559,14 @@ function ExpandedPanel({ track, setNowPlaying, onGenreChange, onSaveEdit, onDele
             className="flex-1 rounded-lg px-3 py-2 text-xs font-semibold"
             style={{ background: 'var(--accent)', color: 'var(--bg)' }}
           >
-            保存
+            {t('save')}
           </button>
           <button
             onClick={() => setEditing(false)}
             className="rounded-lg px-3 py-2 text-xs"
             style={{ background: 'var(--surface2)', color: 'var(--text-dim)', border: '1px solid var(--border)' }}
           >
-            キャンセル
+            {t('cancel')}
           </button>
         </div>
       </div>
@@ -601,7 +604,7 @@ function ExpandedPanel({ track, setNowPlaying, onGenreChange, onSaveEdit, onDele
         className="rounded-lg px-3 py-1.5 text-xs font-semibold flex-shrink-0"
         style={{ background: 'var(--surface2)', color: 'var(--text)', border: '1px solid var(--border)' }}
       >
-        編集
+        {t('edit')}
       </button>
       <button
         onClick={() => onDelete(track)}
@@ -619,6 +622,7 @@ function ExpandedPanel({ track, setNowPlaying, onGenreChange, onSaveEdit, onDele
 }
 
 function EmptyState({ query, genre, total, onAddRecord }) {
+  const t = useT();
   if (total === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-64 text-center px-6">
@@ -632,9 +636,9 @@ function EmptyState({ query, genre, total, onAddRecord }) {
             <circle cx="12" cy="12" r="1.5" />
           </svg>
         </div>
-        <p style={{ color: 'var(--text-dim)', fontWeight: 500 }}>Your crate is empty</p>
+        <p style={{ color: 'var(--text-dim)', fontWeight: 500 }}>{t('crateEmpty')}</p>
         <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 4 }}>
-          レコードを登録してクレートを作ろう
+          {t('crateEmptySub')}
         </p>
         {onAddRecord && (
           <button
@@ -645,7 +649,7 @@ function EmptyState({ query, genre, total, onAddRecord }) {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} style={{ width: 16, height: 16 }}>
               <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
             </svg>
-            レコードを登録
+            {t('addRecordBtn')}
           </button>
         )}
       </div>
@@ -653,7 +657,7 @@ function EmptyState({ query, genre, total, onAddRecord }) {
   }
   return (
     <div className="flex flex-col items-center justify-center h-32 text-center px-6">
-      <p style={{ color: 'var(--text-dim)', fontSize: 13 }}>No tracks match your search</p>
+      <p style={{ color: 'var(--text-dim)', fontSize: 13 }}>{t('noMatch')}</p>
     </div>
   );
 }

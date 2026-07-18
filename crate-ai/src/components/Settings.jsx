@@ -4,6 +4,7 @@ import { testDiscogs } from '../lib/discogs.js';
 import { testSpotify } from '../lib/spotify.js';
 import { importLibraryFromFile } from '../lib/importExport.js';
 import { importRekordboxFile } from '../lib/rekordbox.js';
+import { useT } from '../lib/i18n.js';
 
 const API_GROUPS = [
   {
@@ -39,7 +40,9 @@ export default function Settings({
   kamOn, setKamOn,
   x2On, setX2On,
   includePlayed, setIncludePlayed,
+  lang, setLang,
 }) {
+  const t = useT();
   const [apiValues, setApiValues] = useState({});
   const [savedApi, setSavedApi] = useState({});
   const [testing, setTesting] = useState({});
@@ -154,6 +157,23 @@ export default function Settings({
 
         {/* ── PLAYBACK ─────────────────────────────────────────────────────── */}
         <Section title="Playback">
+          <Row label={t('language')} sub={t('languageSub')}>
+            <div className="flex rounded-lg p-0.5 gap-0.5" style={{ background: 'var(--surface2)' }}>
+              {[['ja', '日本語'], ['en', 'English']].map(([val, label]) => (
+                <button
+                  key={val}
+                  onClick={() => setLang(val)}
+                  className="px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200"
+                  style={{
+                    background: lang === val ? 'var(--accent)' : 'transparent',
+                    color: lang === val ? 'var(--bg)' : 'var(--text-dim)',
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </Row>
           <Row label="Key Format" sub="Camelot (8A) or musical notation (Am)">
             <div
               className="flex rounded-lg p-0.5 gap-0.5"
@@ -178,13 +198,13 @@ export default function Settings({
           <Row label="Include Played Tracks" sub="Show recently played records in suggestions">
             <Toggle on={includePlayed} onToggle={() => setIncludePlayed(!includePlayed)} />
           </Row>
-          <Row label="プレイ履歴" sub="新しいセットを始めるときにリセット" last>
+          <Row label={t('playHistory')} sub={t('playHistorySub')} last>
             <button
-              onClick={async () => { await setSetting('playHistory', '{}'); setSaveMsg('履歴をリセットしました'); setTimeout(() => setSaveMsg(''), 2000); }}
+              onClick={async () => { await setSetting('playHistory', '{}'); setSaveMsg(t('historyCleared')); setTimeout(() => setSaveMsg(''), 2000); }}
               className="rounded-lg px-3 py-1.5 text-xs font-semibold"
               style={{ background: 'var(--surface2)', border: '1px solid var(--border)', color: 'var(--text-dim)' }}
             >
-              リセット
+              {t('reset')}
             </button>
           </Row>
         </Section>

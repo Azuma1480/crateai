@@ -6,6 +6,7 @@ import { gradientFor } from '../lib/art.js';
 import { camelotToKeyMode } from '../lib/rekordbox.js';
 import { parseOldLibrary, groupAlbums, matchAllAlbums, makeSearcher } from '../lib/matchReview.js';
 import PhotoImport from './PhotoImport.jsx';
+import { useT } from '../lib/i18n.js';
 
 export const CAMELOT_KEYS = [
   '1A', '2A', '3A', '4A', '5A', '6A', '7A', '8A', '9A', '10A', '11A', '12A',
@@ -21,6 +22,7 @@ const makeTrackId = (albumId, pos, title) =>
   `${albumId}_${pos}_${title}`.replace(/\s+/g, '_').toLowerCase();
 
 export default function AddRecord({ onImportComplete }) {
+  const t = useT();
   const [mode, setMode] = useState('discogs');
   const [step, setStep] = useState('search');
   const [query, setQuery] = useState('');
@@ -180,7 +182,7 @@ export default function AddRecord({ onImportComplete }) {
         {step === 'search' && (
           <div className="flex flex-col gap-4">
             <div className="flex gap-1 rounded-xl p-1" style={{ background: 'var(--surface2)' }}>
-              {[['discogs', 'Discogs'], ['photo', 'Photo'], ['manual', 'Manual'], ['review', '照合']].map(([m, label]) => (
+              {[['discogs', 'Discogs'], ['photo', 'Photo'], ['manual', 'Manual'], ['review', t('verifyTab')]].map(([m, label]) => (
                 <button
                   key={m}
                   type="button"

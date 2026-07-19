@@ -6,6 +6,7 @@ import { gradientFor } from '../lib/art.js';
 import { camelotToKeyMode } from '../lib/rekordbox.js';
 import { parseOldLibrary, groupAlbums, matchAllAlbums, makeSearcher } from '../lib/matchReview.js';
 import PhotoImport from './PhotoImport.jsx';
+import PhotoDbReview from './PhotoDbReview.jsx';
 import { useT } from '../lib/i18n.js';
 
 export const CAMELOT_KEYS = [
@@ -187,7 +188,7 @@ export default function AddRecord({ onImportComplete }) {
         {step === 'search' && (
           <div className="flex flex-col gap-4">
             <div className="flex gap-1 rounded-xl p-1" style={{ background: 'var(--surface2)' }}>
-              {[['discogs', 'Discogs'], ['photo', 'Photo'], ['manual', 'Manual'], ['review', t('verifyTab')]].map(([m, label]) => (
+              {[['discogs', 'Discogs'], ['photo', 'Photo'], ['manual', 'Manual'], ['review', t('verifyTab')], ['photodb', '写真DB']].map(([m, label]) => (
                 <button
                   key={m}
                   type="button"
@@ -203,6 +204,7 @@ export default function AddRecord({ onImportComplete }) {
             {mode === 'photo' && <PhotoImport onImportComplete={onImportComplete} />}
             {mode === 'manual' && <ManualAdd onImportComplete={onImportComplete} />}
             {mode === 'review' && <MatchReview onImportComplete={onImportComplete} />}
+            {mode === 'photodb' && <PhotoDbReview onImportComplete={onImportComplete} />}
             {mode === 'discogs' && (
               <form onSubmit={handleSearch} className="flex flex-col gap-4">
                 <div>

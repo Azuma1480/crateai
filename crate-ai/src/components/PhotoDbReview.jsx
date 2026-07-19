@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { PHOTO_DB, SHELF_SPINES } from '../lib/photoDb.js';
 import { importLibraryFromJson } from '../lib/importExport.js';
 import { getAllAlbums } from '../lib/db.js';
+import { enrichLibrary } from '../lib/enrich.js';
 
 const VERIFY_META = {
   high: { label: '確認済み', color: '#52d98a' },
@@ -23,6 +24,8 @@ export default function PhotoDbReview({ onImportComplete }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [openIdx, setOpenIdx] = useState(null);
+  const [enriching, setEnriching] = useState(false);
+  const [enrichMsg, setEnrichMsg] = useState('');
 
   const keyOf = (e) => `${e.artist}__${e.title}`.toLowerCase();
 
@@ -75,6 +78,34 @@ export default function PhotoDbReview({ onImportComplete }) {
         </button>
         {message && (
           <p style={{ fontSize: 12, color: message.startsWith('エラー') ? '#f2726b' : '#52d98a', marginTop: 8 }}>{message}</p>
+        )}
+        <button
+          type="button"
+          disabled={enriching}
+          onClick={async () => {
+            setEnriching(true);
+            setEnrichMsg('');
+            try {
+              const r = await enrichLibrary((p) =>
+                setEnrichMsg(`取得中… ${p.current}/${p.total} ${p.album}`));
+              setEnrichMsg(`完了: ${r.done}枚を補完（見つからず ${r.notfound}枚 ／ 補完不要 ${r.skipped}枚）`);
+              onImportComplete?.();
+            } catch (err) {
+              setEnrichMsg(`エラー: ${err.message}`);
+            } finally {
+              setEnriching(false);
+            }
+          }}
+          className="mt-2 w-full py-2.5 rounded-xl text-sm font-semibold disabled:opacity-50"
+          style={{ background: 'var(--surface2)', color: 'var(--text)', border: '1px solid var(--border)' }}
+        >
+          {enriching ? '取得中…' : 'アートワーク+曲リストを自動取得 (iTunes)'}
+        </button>
+        <p style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 6 }}>
+          ライブラリ追加後に押してね。ジャケ画像が無い/曲リスト未登録のアルバムだけ、iTunesの公式データで補完する（写真で確認済みの曲リストは上書きしない）
+        </p>
+        {enrichMsg && (
+          <p style={{ fontSize: 12, color: enrichMsg.startsWith('エラー') ? '#f2726b' : '#52d98a', marginTop: 6 }}>{enrichMsg}</p>
         )}
       </div>
 

@@ -3,43 +3,45 @@
 @tailwind utilities;
 
 /* ─── DESIGN TOKENS ────────────────────────────────────────────────────────── */
-/* Modern Retro: warm dark, amber accent — default */
+/* Analog Warm: deep espresso dark, brass-amber accent — default.
+   Same layout, richer materials: creamier text hierarchy, livelier borders,
+   and a touch more glow on the accent. */
 :root {
   color-scheme: dark;
 
-  --bg:          #0d0a06;
-  --surface:     #1c1509;
-  --surface2:    #251e0d;
-  --border:      #332b18;
-  --accent:      #e8a030;
-  --accent-dim:  rgba(232,160,48,0.14);
-  --accent-glow: rgba(232,160,48,0.32);
-  --text:        #c8b48a;
-  --text-dim:    #7a6a52;
-  --text-muted:  #3a3028;
-  --nav-bg:      #120f08;
-  --streak:      rgba(232,160,48,0.55);
-  --streak2:     rgba(255,200,100,0.25);
+  --bg:          #0b0805;
+  --surface:     #191207;
+  --surface2:    #241a0b;
+  --border:      #3b2f17;
+  --accent:      #f2a83c;
+  --accent-dim:  rgba(242,168,60,0.15);
+  --accent-glow: rgba(242,168,60,0.42);
+  --text:        #ecdcb2;
+  --text-dim:    #9b8763;
+  --text-muted:  #574834;
+  --nav-bg:      #100c06;
+  --streak:      rgba(242,168,60,0.55);
+  --streak2:     rgba(255,206,110,0.25);
 
   /* transitions */
   --t: 0.5s ease;
 }
 
-/* Modern: cool dark, ice-blue accent — KAM ON */
+/* Midnight Ice: cool dark, ice-blue accent — KAM ON */
 :root.kam-on {
-  --bg:          #060910;
-  --surface:     #0b1220;
-  --surface2:    #101c2e;
-  --border:      #1a2d44;
-  --accent:      #5ab4e8;
-  --accent-dim:  rgba(90,180,232,0.12);
-  --accent-glow: rgba(90,180,232,0.38);
-  --text:        #a8c4d8;
-  --text-dim:    #4a6880;
-  --text-muted:  #1e3448;
-  --nav-bg:      #040710;
-  --streak:      rgba(90,180,232,0.5);
-  --streak2:     rgba(160,220,255,0.2);
+  --bg:          #05080f;
+  --surface:     #0b1322;
+  --surface2:    #111e31;
+  --border:      #1e3450;
+  --accent:      #64bdf0;
+  --accent-dim:  rgba(100,189,240,0.13);
+  --accent-glow: rgba(100,189,240,0.45);
+  --text:        #c2d9ea;
+  --text-dim:    #5f7f9b;
+  --text-muted:  #2a4560;
+  --nav-bg:      #04070e;
+  --streak:      rgba(100,189,240,0.5);
+  --streak2:     rgba(170,225,255,0.2);
 }
 
 /* ─── RESET & BASE ─────────────────────────────────────────────────────────── */
@@ -91,8 +93,36 @@ body {
   color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
+  /* Tabular figures so BPM / key / time readouts don't jitter as they change */
+  font-variant-numeric: tabular-nums;
   transition: background-color var(--t), color var(--t);
 }
+
+/* Subtle analog grain over everything — barely-there texture that keeps
+   large dark areas from looking flat. Pure CSS, no assets, no layout impact. */
+#root > *::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0.05;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+#root > * { position: relative; }
+
+/* Tactile press feedback on every button — design only, no layout change */
+button {
+  transition: transform 0.12s ease, opacity 0.12s ease,
+              background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+button:active:not(:disabled) { transform: scale(0.97); }
+
+/* Softer, warmer card edges: hairline top highlight on surfaces */
+[style*='var(--surface)'] { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03); }
+
+/* Focus visibility for keyboard / accessibility without design noise */
+:focus-visible { outline: 2px solid var(--accent-glow); outline-offset: 2px; }
 
 /* Safe area */
 .safe-top  { padding-top:    env(safe-area-inset-top); }
@@ -106,6 +136,7 @@ body {
 .scroll-area::-webkit-scrollbar { width: 3px; }
 .scroll-area::-webkit-scrollbar-track { background: transparent; }
 .scroll-area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.scroll-area::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
 /* ─── ANIMATIONS ───────────────────────────────────────────────────────────── */
 @keyframes spin {
